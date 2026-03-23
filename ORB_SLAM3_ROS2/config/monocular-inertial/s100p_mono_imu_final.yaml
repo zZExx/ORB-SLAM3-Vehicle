@@ -1,0 +1,128 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters. Adjust them!
+#--------------------------------------------------------------------------------------------
+Camera.type: "PinHole"
+
+# Camera calibration and distortion parameters (OpenCV)
+Camera.fx: 198.07257055127616
+Camera.fy: 198.70134357465614
+Camera.cx: 319.2522447434346
+Camera.cy: 248.200685588384
+
+Camera.k1: -0.01133380084957939
+Camera.k2: -0.008001085012091416
+Camera.p1: 0.000007778157837482043
+Camera.p2: 0.0006179086245881468
+
+# Camera resolution
+Camera.width: 640
+Camera.height: 480
+
+# Camera frames per second
+Camera.fps: 20.0
+
+# Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
+Camera.RGB: 0
+
+# Transformation from camera to body-frame (imu)
+Tbc: !!opencv-matrix
+   rows: 4
+   cols: 4 
+   dt: f
+   data: [0.01976283, -0.10899404, 0.99384593, 0.08147345, 
+         -0.99955792, -0.02423852, 0.0172182, -0.04203329, 
+         0.02221268, -0.99374685, -0.10942487, -0.05112934,      
+         0.00000000, 0.00000000, 0.00000000, 1.00000000]
+# IMU noise
+IMU.NoiseGyro: 0.000513977155
+IMU.NoiseAcc: 0.001659131141
+IMU.GyroWalk: 0.0006240939
+IMU.AccWalk: 0.000147278489
+IMU.Frequency: 200
+
+# Init-stage gating parameters (consumed by Tracking)
+Init.MinKeyFrames: 8
+Init.Timeout: 3.5
+Init.StableFrames: 8
+
+# Keyframe insertion time thresholds (seconds)
+KeyFrame.TimeThresholdNoImuInit: 0.5  # Used before IMU initialization
+KeyFrame.TimeThresholdImuInit: 0.5     # Used after IMU initialization
+
+# IMU initialization motion checks in local mapping
+LocalMapping.ImuInitMaxTime: 10.0      # Reset check time window
+LocalMapping.ImuInitMinMotion: 0.01   # Minimum required motion (reduced from 0.02 for slow vehicles)
+
+# Atlas save/load
+System.SaveAtlasToFile: "s100p_mono_imu_map"
+
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+
+# ORB Extractor: Number of features per image
+ORBextractor.nFeatures: 3000
+
+# ORB Extractor: Scale factor between levels in the scale pyramid
+ORBextractor.scaleFactor: 1.2
+
+# ORB Extractor: Number of levels in the scale pyramid
+ORBextractor.nLevels: 8
+
+# ORB Extractor: Fast threshold
+# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
+# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
+# You can lower these values if your images have low contrast
+ORBextractor.iniThFAST: 12
+ORBextractor.minThFAST: 5
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3
+Viewer.ViewpointX: 0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -3.5
+Viewer.ViewpointF: 500
+
+#--------------------------------------------------------------------------------------------
+# Deeper mono-inertial initialization parameters
+#--------------------------------------------------------------------------------------------
+
+# Time window for ReconstructWithTwoViews (seconds).
+MonoInit.TimeoutSec: 3.0
+
+# IMU rotation bounds for attempting reconstruction.
+# Below MinRotDeg: near-pure translation, F/H degenerate.
+# Above MaxRotDeg: rotation-dominated with minimal translation, triangulation degrades.
+MonoInit.MinRotDeg: 3.0
+MonoInit.MaxRotDeg: 15.0
+
+# Minimum time gap between reference and current frame.
+# Enforces a minimum baseline; too-small dt gives fragile initial maps.
+MonoInit.MinDtSec: 0.25
+
+# Minimum tracked map points after CreateInitialMapMonocular to accept initialization.
+MonoInit.MinTrackedMapPoints: 30
+
+# TrackLocalMap inlier thresholds (IMU_MONOCULAR).
+# MinInliersNoImu: pre-IMU-init threshold (original hardcoded 40).
+# MinInliersReloc: threshold right after relocalization (original hardcoded 40).
+Tracking.MinInliersNoImu: 20
+Tracking.MinInliersReloc: 30
+
+# How long (seconds) the system stays in RECENTLY_LOST before declaring full LOST.
+# Shorter values cause faster reset and re-initialization; default was 5.0s.
+Tracking.TimeRecentlyLost: 8.0
+
+# If keyframes in the current map are at most N while LOST, force reset / reinitialize.
+# Used in two Tracking paths only (RECENTLY_LOST vs LOST gate at >10 KFs is unchanged).
+Tracking.ResetMinKeyFrames: 8

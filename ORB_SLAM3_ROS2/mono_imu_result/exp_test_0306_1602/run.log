@@ -1,0 +1,89 @@
+stdin is not a terminal device. Keyboard handling disabled.[INFO] [1772784141.659434719] [rosbag2_storage]: Opened database '/mnt/ssd/ros2_bag/vins_bag_upgrade/bag8/bag8_0.db3' for READ_ONLY.
+[INFO] [1772784141.700742987] [rosbag2_player]: Set rate to 0.5
+[INFO] [1772784141.708652883] [rosbag2_player]: Adding keyboard callbacks.
+[INFO] [1772784141.708744285] [rosbag2_player]: Press SPACE for Pause/Resume
+[INFO] [1772784141.708771186] [rosbag2_player]: Press CURSOR_RIGHT for Play Next Message
+[INFO] [1772784141.708789411] [rosbag2_player]: Press CURSOR_UP for Increase Rate 10%
+[INFO] [1772784141.708805112] [rosbag2_player]: Press CURSOR_DOWN for Decrease Rate 10%
+[INFO] [1772784141.709404450] [rosbag2_storage]: Opened database '/mnt/ssd/ros2_bag/vins_bag_upgrade/bag8/bag8_0.db3' for READ_ONLY.
+
+ORB-SLAM3 Copyright (C) 2017-2020 Carlos Campos, Richard Elvira, Juan J. Gómez, José M.M. Montiel and Juan D. Tardós, University of Zaragoza.
+ORB-SLAM2 Copyright (C) 2014-2016 Raúl Mur-Artal, José M.M. Montiel and Juan D. Tardós, University of Zaragoza.
+This program comes with ABSOLUTELY NO WARRANTY;
+This is free software, and you are welcome to redistribute it
+under certain conditions. See LICENSE.txt.
+
+Input sensor was set to: Monocular-Inertial
+
+Loading ORB Vocabulary. This could take a while...
+
+closing.
+
+closing.
+
+closing.
+
+closing.
+Vocabulary loaded!
+
+Initialization of Atlas from scratch 
+Creation of new map with id: 0
+Creation of new map with last KF id: 0
+Seq. Name: 
+
+Camera Parameters: 
+- Camera: Pinhole
+- Image scale: 1
+- fx: 198.073
+- fy: 198.701
+- cx: 319.252
+- cy: 248.201
+- k1: -0.0113338
+- k2: -0.00800109
+- p1: 7.77816e-06
+- p2: 0.000617909
+- fps: 18
+- color order: BGR (ignored if grayscale)
+
+ORB Extractor Parameters: 
+- Number of Features: 800
+- Scale Levels: 6
+- Scale Factor: 1.2
+- Initial Fast Threshold: 20
+- Minimum Fast Threshold: 7
+
+Left camera to Imu Transform (Tbc): 
+[0.02015076, 0.065902747, 0.99762255, 0.079323031;
+ -0.99959677, -0.01863965, 0.021421971, -0.0052957698;
+ 0.020007109, -0.99765193, 0.065500572, -0.045946602;
+ 0, 0, 0, 1]
+
+IMU frequency: 200 Hz
+IMU gyro noise: 0.000513977 rad/s/sqrt(Hz)
+IMU gyro walk: 6.24094e-06 rad/s^2/sqrt(Hz)
+IMU accelerometer noise: 0.00165913 m/s^2/sqrt(Hz)
+IMU accelerometer walk: 0.000147278 m/s^3/sqrt(Hz)
+There are 1 cameras in the atlas
+Camera 0 is pinhole
+Equal: 0
+Time offset: camera=0.063 imu=0
+============================
+First KF:0; Map init KF:0
+New Map created with 281 points
+start VIBA 1
+end VIBA 1
+start VIBA 2
+end VIBA 2
+[INFO] [1772784265.048977442] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+
+Saving keyframe trajectory to KeyFrameTrajectory.txt ...
+
+Saving trajectory to FrameTrajectory.txt ...
+There are 1 maps in the atlas
+  Map 0 has 325 KFs
+
+End of saving trajectory to FrameTrajectory.txt ...
+Shutdown
+Starting to write the save binary file
+End to write save binary file
+Saved trajectory to experiments/exp_test_0306_1602/KeyFrameTrajectory.txt

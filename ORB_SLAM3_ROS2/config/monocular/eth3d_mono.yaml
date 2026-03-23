@@ -1,0 +1,52 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters — ETH3D SFM dataset (sfm_house_loop, sfm_lab_room_*)
+# Source: ~/Sanexis/dataset/ETH3D/sfm_house_loop/calibration.txt
+# Resolution: 743x465, fx=fy=726.21 (square pixels, no distortion — rectified images)
+#--------------------------------------------------------------------------------------------
+Camera.type: "PinHole"
+
+Camera.fx: 726.21081542969
+Camera.fy: 726.21081542969
+Camera.cx: 359.2048034668
+Camera.cy: 202.47247314453
+
+Camera.k1: 0.0
+Camera.k2: 0.0
+Camera.p1: 0.0
+Camera.p2: 0.0
+
+Camera.width: 743
+Camera.height: 465
+
+# ~13.5 Hz from bag (556 frames / 41 s)
+Camera.fps: 13
+
+# Bag publishes RGB
+Camera.RGB: 1
+
+System.SaveAtlasToFile: "eth3d_map"
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+ORBextractor.nFeatures: 1000
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3
+Viewer.ViewpointX: 0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -3.5
+Viewer.ViewpointF: 500

@@ -1,0 +1,53 @@
+%YAML:1.0
+
+# Camera Parameters
+Camera.type: "PinHole"
+Camera.fx: 308.0
+Camera.fy: 308.0
+Camera.cx: 320.0
+Camera.cy: 180.0
+
+Camera.k1: 0.0
+Camera.k2: 0.0
+Camera.p1: 0.0
+Camera.p2: 0.0
+
+Camera.fps: 30.0
+Camera.RGB: 1
+
+# ORB Parameters
+ORBextractor.nFeatures: 1500
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+# IMU Parameters
+# Important: Frequency must be an INTEGER for some ORB-SLAM3 versions
+IMU.NoiseGyro: 0.00017
+IMU.NoiseAcc: 0.002
+IMU.GyroWalk: 0.0000193
+IMU.AccWalk: 0.003
+IMU.Frequency: 200
+
+# Transformation from Camera to IMU (Tbc)
+Tbc: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: f
+   data: [1.0, 0.0, 0.0, 0.0,
+          0.0, 1.0, 0.0, 0.0,
+          0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 1.0]
+
+# Viewer Parameters
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 1.0
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0

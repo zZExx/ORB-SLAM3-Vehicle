@@ -1,0 +1,11 @@
+# Monorepo root: colcon outputs if you build with this directory as the workspace root
+build/
+install/
+log/
+
+# IDE / indexer (do not commit)
+ORB_SLAM3/.cache/
+ORB_SLAM3_ROS2/.cache/
+.vscode/
+ORB_SLAM3/.vscode/
+ORB_SLAM3_ROS2/.vscode/

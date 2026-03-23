@@ -1,0 +1,17 @@
+vocabulary/ORBvoc.txt
+config/isaac
+launch
+
+# colcon / CMake (building inside this package path)
+build/
+install/
+log/
+compile_commands.json
+
+# Experiment outputs (keep directories; ignore generated artifacts)
+experiments/**/run.log
+experiments/**/FrameTrajectory.txt
+experiments/**/KeyFrameTrajectory.txt
+
+# Local IDE settings (often contain machine-specific paths)
+.vscode/
