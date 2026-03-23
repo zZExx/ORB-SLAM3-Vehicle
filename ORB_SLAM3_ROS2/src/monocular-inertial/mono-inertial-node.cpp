@@ -9,6 +9,7 @@
 #include <rosbag2_cpp/converter_options.hpp>
 #include <sensor_msgs/image_encodings.hpp>
 #include <std_srvs/srv/set_bool.hpp>
+#include <deque>
 
 using std::placeholders::_1;
 
@@ -90,10 +91,13 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM, const std::string &
 
     pubs_.init(this);
 
-    syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu, this);
     if (IsDbMode())
     {
         dbThread_ = new std::thread(&MonoInertialNode::DbReadLoop, this);
+    }
+    else
+    {
+        syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu, this);
     }
 }
 
@@ -107,8 +111,12 @@ MonoInertialNode::~MonoInertialNode()
         dbThread_ = nullptr;
     }
 
-    syncThread_->join();
-    delete syncThread_;
+    if (syncThread_ != nullptr)
+    {
+        syncThread_->join();
+        delete syncThread_;
+        syncThread_ = nullptr;
+    }
 
     // Save trajectory before Shutdown so we get KeyFrameTrajectory.txt even if Shutdown() segfaults later
     SLAM_->SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
@@ -303,8 +311,8 @@ void MonoInertialNode::DbReadLoop()
     rclcpp::Serialization<ImuMsg> imuSerialization;
     rclcpp::Serialization<ImageMsg> imageSerialization;
     RCLCPP_INFO(this->get_logger(), "DB reader started: %s", dbBagPath_.c_str());
-    const double playRate = dbPlayRate_ > 0.0 ? dbPlayRate_ : 1.0;
-    int64_t lastMsgNs = -1;
+    std::deque<ORB_SLAM3::IMU::Point> imuWindow;
+    double lastImageTs = -1.0;
 
     while (rclcpp::ok() && !stopDbThread_.load())
     {
@@ -326,36 +334,101 @@ void MonoInertialNode::DbReadLoop()
             continue;
         }
 
-        const int64_t currentMsgNs = static_cast<int64_t>(serializedBagMessage->time_stamp);
-        if (lastMsgNs >= 0 && currentMsgNs > lastMsgNs)
-        {
-            const int64_t deltaNs = currentMsgNs - lastMsgNs;
-            const int64_t sleepNs = static_cast<int64_t>(static_cast<double>(deltaNs) / playRate);
-            if (sleepNs > 0)
-            {
-                std::this_thread::sleep_for(std::chrono::nanoseconds(sleepNs));
-            }
-        }
-        lastMsgNs = currentMsgNs;
-
         if (serializedBagMessage->topic_name == dbImuTopic_)
         {
             ImuMsg imuMsg;
             rclcpp::SerializedMessage serializedMsg(*serializedBagMessage->serialized_data);
             imuSerialization.deserialize_message(&serializedMsg, &imuMsg);
-            PushImu(std::make_shared<ImuMsg>(imuMsg), true);
+            double t = Utility::StampToSec(imuMsg.header.stamp) + imuTimeOffset_;
+            cv::Point3f acc(imuMsg.linear_acceleration.x, imuMsg.linear_acceleration.y, imuMsg.linear_acceleration.z);
+            cv::Point3f gyr(imuMsg.angular_velocity.x, imuMsg.angular_velocity.y, imuMsg.angular_velocity.z);
+            imuWindow.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
         }
         else if (serializedBagMessage->topic_name == dbCameraTopic_)
         {
             ImageMsg imageMsg;
             rclcpp::SerializedMessage serializedMsg(*serializedBagMessage->serialized_data);
             imageSerialization.deserialize_message(&serializedMsg, &imageMsg);
-            PushImage(std::make_shared<ImageMsg>(imageMsg), true);
+
+            double tIm = Utility::StampToSec(imageMsg.header.stamp) + cameraTimeOffset_;
+            if (lastImageTs >= 0.0 && tIm <= lastImageTs)
+            {
+                continue;
+            }
+
+            std::vector<ORB_SLAM3::IMU::Point> vImuMeas;
+            while (!imuWindow.empty() && imuWindow.front().t <= tIm)
+            {
+                if (lastImageTs < 0.0 || imuWindow.front().t > lastImageTs)
+                {
+                    vImuMeas.push_back(imuWindow.front());
+                }
+                imuWindow.pop_front();
+            }
+            if (vImuMeas.empty())
+            {
+                continue;
+            }
+
+            cv::Mat im = GetImage(std::make_shared<ImageMsg>(imageMsg));
+            if (im.empty())
+            {
+                continue;
+            }
+            if (bClahe_)
+            {
+                clahe_->apply(im, im);
+            }
+
+            ProcessTrackedFrame(im, tIm, vImuMeas);
+            lastImageTs = tIm;
         }
     }
 
     RCLCPP_INFO(this->get_logger(), "DB reader stopped");
     dbReaderFinished_.store(true);
+}
+
+void MonoInertialNode::ProcessTrackedFrame(const cv::Mat &im, const double tIm, const std::vector<ORB_SLAM3::IMU::Point> &vImuMeas)
+{
+    Sophus::SE3f Tcw = SLAM_->TrackMonocular(im, tIm, vImuMeas);
+    cv::Mat viewerImage = SLAM_->GetTrackedImage(1.0f);
+    pubs_.publish(SLAM_, Tcw, tIm, viewerImage);
+
+    ORB_SLAM3::Atlas* pAtlas = SLAM_->GetAtlas();
+    const bool imuInitialized = pAtlas != nullptr && pAtlas->isImuInitialized();
+    const int trackingState = SLAM_->GetTrackingState();
+    const bool isLost = SLAM_->isLost();
+
+    if (trackingState == ORB_SLAM3::Tracking::OK && !initMonoLogged_)
+    {
+        RCLCPP_INFO(this->get_logger(), "[INIT] Mono initialized");
+        initMonoLogged_ = true;
+    }
+
+    if (!imuInitStartLogged_ && pAtlas != nullptr && trackingState == ORB_SLAM3::Tracking::OK &&
+        pAtlas->KeyFramesInMap() >= 8 && !imuInitialized)
+    {
+        RCLCPP_INFO(this->get_logger(), "[INIT] IMU initialization started");
+        imuInitStartLogged_ = true;
+    }
+
+    if (imuInitialized && !imuReadyLogged_)
+    {
+        RCLCPP_INFO(this->get_logger(), "[INIT] IMU initialization success, scale=computed");
+        RCLCPP_INFO(this->get_logger(), "[INIT] Switch to VIO");
+        imuReadyLogged_ = true;
+    }
+
+    if (isLost && !lastLostState_)
+    {
+        RCLCPP_WARN(this->get_logger(), "[RESET] Tracking lost, reinitializing");
+        pubs_.reset();
+        initMonoLogged_ = false;
+        imuInitStartLogged_ = false;
+        imuReadyLogged_ = false;
+    }
+    lastLostState_ = isLost;
 }
 
 cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
@@ -432,45 +505,7 @@ void MonoInertialNode::SyncWithImu()
             {
                 clahe_->apply(im, im);
             }
-
-            Sophus::SE3f Tcw = SLAM_->TrackMonocular(im, tIm, vImuMeas);
-            cv::Mat viewerImage = SLAM_->GetTrackedImage(1.0f);
-            pubs_.publish(SLAM_, Tcw, tIm, viewerImage);
-
-            ORB_SLAM3::Atlas* pAtlas = SLAM_->GetAtlas();
-            const bool imuInitialized = pAtlas != nullptr && pAtlas->isImuInitialized();
-            const int trackingState = SLAM_->GetTrackingState();
-            const bool isLost = SLAM_->isLost();
-
-            if (trackingState == ORB_SLAM3::Tracking::OK && !initMonoLogged_)
-            {
-                RCLCPP_INFO(this->get_logger(), "[INIT] Mono initialized");
-                initMonoLogged_ = true;
-            }
-
-            if (!imuInitStartLogged_ && pAtlas != nullptr && trackingState == ORB_SLAM3::Tracking::OK &&
-                pAtlas->KeyFramesInMap() >= 8 && !imuInitialized)
-            {
-                RCLCPP_INFO(this->get_logger(), "[INIT] IMU initialization started");
-                imuInitStartLogged_ = true;
-            }
-
-            if (imuInitialized && !imuReadyLogged_)
-            {
-                RCLCPP_INFO(this->get_logger(), "[INIT] IMU initialization success, scale=computed");
-                RCLCPP_INFO(this->get_logger(), "[INIT] Switch to VIO");
-                imuReadyLogged_ = true;
-            }
-
-            if (isLost && !lastLostState_)
-            {
-                RCLCPP_WARN(this->get_logger(), "[RESET] Tracking lost, reinitializing");
-                pubs_.reset();
-                initMonoLogged_ = false;
-                imuInitStartLogged_ = false;
-                imuReadyLogged_ = false;
-            }
-            lastLostState_ = isLost;
+            ProcessTrackedFrame(im, tIm, vImuMeas);
 
             const double now = this->get_clock()->now().seconds();
             if (obsLastLogTime_ < 0.0)

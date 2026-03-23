@@ -43,9 +43,9 @@ IMU.AccWalk: 0.000147278489
 IMU.Frequency: 200
 
 # Init-stage gating parameters (consumed by Tracking)
-Init.MinKeyFrames: 8
+Init.MinKeyFrames: 5
 Init.Timeout: 3.5
-Init.StableFrames: 8
+Init.StableFrames: 5
 
 # Keyframe insertion time thresholds (seconds)
 KeyFrame.TimeThresholdNoImuInit: 0.5  # Used before IMU initialization
@@ -64,7 +64,7 @@ System.SaveAtlasToFile: "s100p_mono_imu_map"
 #--------------------------------------------------------------------------------------------
 
 # ORB Extractor: Number of features per image
-ORBextractor.nFeatures: 3000
+ORBextractor.nFeatures: 4000
 
 # ORB Extractor: Scale factor between levels in the scale pyramid
 ORBextractor.scaleFactor: 1.2
@@ -76,8 +76,8 @@ ORBextractor.nLevels: 8
 # Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
 # Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
 # You can lower these values if your images have low contrast
-ORBextractor.iniThFAST: 12
-ORBextractor.minThFAST: 5
+ORBextractor.iniThFAST: 10
+ORBextractor.minThFAST: 3
 
 #--------------------------------------------------------------------------------------------
 # Viewer Parameters
@@ -103,7 +103,7 @@ MonoInit.TimeoutSec: 3.0
 # IMU rotation bounds for attempting reconstruction.
 # Below MinRotDeg: near-pure translation, F/H degenerate.
 # Above MaxRotDeg: rotation-dominated with minimal translation, triangulation degrades.
-MonoInit.MinRotDeg: 3.0
+MonoInit.MinRotDeg: 2.5
 MonoInit.MaxRotDeg: 15.0
 
 # Minimum time gap between reference and current frame.
@@ -125,4 +125,4 @@ Tracking.TimeRecentlyLost: 8.0
 
 # If keyframes in the current map are at most N while LOST, force reset / reinitialize.
 # Used in two Tracking paths only (RECENTLY_LOST vs LOST gate at >10 KFs is unchanged).
-Tracking.ResetMinKeyFrames: 8
+Tracking.ResetMinKeyFrames: 5

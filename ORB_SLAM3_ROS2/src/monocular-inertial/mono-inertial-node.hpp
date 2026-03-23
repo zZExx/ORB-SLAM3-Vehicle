@@ -47,6 +47,7 @@ private:
     cv::Mat GetImage(const ImageMsg::SharedPtr msg);
     void SyncWithImu();
     void DbReadLoop();
+    void ProcessTrackedFrame(const cv::Mat &im, const double tIm, const std::vector<ORB_SLAM3::IMU::Point> &vImuMeas);
     void SwitchDataSource(DataSourceMode mode);
     bool IsDbMode() const;
 
@@ -58,7 +59,7 @@ private:
     SlamPublishers pubs_;
 
     ORB_SLAM3::System *SLAM_;
-    std::thread *syncThread_;
+    std::thread *syncThread_{nullptr};
     std::thread *dbThread_{nullptr};
     std::atomic<bool> stopDbThread_{false};
     std::atomic<bool> dbReaderFinished_{true};
