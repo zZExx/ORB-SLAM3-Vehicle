@@ -16,6 +16,7 @@ CAM_TOPIC="/camera/image_raw"
 IMU_TOPIC="/imu/data"
 BAG_PATH=""
 BAG_RATE="0.5"
+INPUT_SOURCE="auto"
 TBC_SCALE="0.5"
 NOISE_SCALES="2.0,4.0,8.0"
 
@@ -36,6 +37,7 @@ Options:
   --imu_topic TOPIC
   --bag PATH
   --bag_rate FLOAT
+  --input_source auto|subscribe|db
   --tbc_scale FLOAT
   --noise_scales CSV
   --help
@@ -55,6 +57,7 @@ while [ $# -gt 0 ]; do
     --imu_topic) IMU_TOPIC="$2"; shift 2 ;;
     --bag) BAG_PATH="$2"; shift 2 ;;
     --bag_rate) BAG_RATE="$2"; shift 2 ;;
+    --input_source) INPUT_SOURCE="$2"; shift 2 ;;
     --tbc_scale) TBC_SCALE="$2"; shift 2 ;;
     --noise_scales) NOISE_SCALES="$2"; shift 2 ;;
     --help) usage; exit 0 ;;
@@ -126,6 +129,7 @@ if [ "$MODE" = "sweep-noise" ]; then
         "$CAM_TOPIC" \
         "$IMU_TOPIC" \
         "$BAG_RATE" \
+        "$INPUT_SOURCE" \
     )
   done
   exit 0
@@ -142,7 +146,8 @@ if [ -n "$BAG_PATH" ]; then
     "$VIZ" \
     "$CAM_TOPIC" \
     "$IMU_TOPIC" \
-    "$BAG_RATE"
+    "$BAG_RATE" \
+    "$INPUT_SOURCE"
   exit 0
 fi
 

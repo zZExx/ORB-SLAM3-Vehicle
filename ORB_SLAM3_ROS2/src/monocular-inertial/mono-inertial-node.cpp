@@ -2,6 +2,11 @@
 
 
 #include <opencv2/core/core.hpp>
+#include <rclcpp/serialization.hpp>
+#include <rclcpp/serialized_message.hpp>
+#include <rosbag2_cpp/reader.hpp>
+#include <rosbag2_storage/storage_options.hpp>
+#include <rosbag2_cpp/converter_options.hpp>
 #include <sensor_msgs/image_encodings.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 
@@ -18,14 +23,33 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM, const std::string &
     this->declare_parameter<double>("camera_time_offset", 0.0);
     this->declare_parameter<double>("imu_time_offset", 0.0);
     this->declare_parameter<bool>("localization_only", false);
+    this->declare_parameter<std::string>("data_source", "subscribe");
+    this->declare_parameter<std::string>("db_bag_path", "");
+    this->declare_parameter<std::string>("db_camera_topic", "/camera/image_raw");
+    this->declare_parameter<std::string>("db_imu_topic", "/imu/data");
+    this->declare_parameter<double>("db_play_rate", 1.0);
     this->get_parameter("camera_time_offset", cameraTimeOffset_);
     this->get_parameter("imu_time_offset", imuTimeOffset_);
     this->get_parameter("localization_only", localizationOnly_);
+    this->get_parameter("data_source", dataSource_);
+    this->get_parameter("db_bag_path", dbBagPath_);
+    this->get_parameter("db_camera_topic", dbCameraTopic_);
+    this->get_parameter("db_imu_topic", dbImuTopic_);
+    this->get_parameter("db_play_rate", dbPlayRate_);
 
     std::cout << "Equal: " << doEqual_ << std::endl;
     std::cout << "Time offset: camera=" << cameraTimeOffset_ << " imu=" << imuTimeOffset_ << std::endl;
 
-    auto sensor_qos = rclcpp::SensorDataQoS();
+    if (dataSource_ == "db")
+    {
+        activeDataSource_.store(static_cast<int>(DataSourceMode::DB));
+    }
+    else
+    {
+        activeDataSource_.store(static_cast<int>(DataSourceMode::SUBSCRIBE));
+    }
+
+    rclcpp::SensorDataQoS sensor_qos;
     subImu_ = this->create_subscription<ImuMsg>("imu", sensor_qos, std::bind(&MonoInertialNode::GrabImu, this, _1));
     subImg_ = this->create_subscription<ImageMsg>("camera", sensor_qos, std::bind(&MonoInertialNode::GrabImage, this, _1));
 
@@ -43,6 +67,22 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM, const std::string &
             response->success = true;
         });
 
+    source_switch_service_ = this->create_service<std_srvs::srv::SetBool>(
+        "data_source_mode",
+        [this](const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+               std::shared_ptr<std_srvs::srv::SetBool::Response> response) {
+            const DataSourceMode mode = request->data ? DataSourceMode::DB : DataSourceMode::SUBSCRIBE;
+            if (mode == DataSourceMode::DB && dbBagPath_.empty())
+            {
+                response->success = false;
+                response->message = "db_bag_path is empty";
+                return;
+            }
+            SwitchDataSource(mode);
+            response->success = true;
+            response->message = request->data ? "Data source switched to DB" : "Data source switched to subscribe";
+        });
+
     if (localizationOnly_) {
         SLAM_->ActivateLocalizationMode();
         RCLCPP_INFO(this->get_logger(), "Localization mode enabled at startup");
@@ -51,10 +91,22 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM, const std::string &
     pubs_.init(this);
 
     syncThread_ = new std::thread(&MonoInertialNode::SyncWithImu, this);
+    if (IsDbMode())
+    {
+        dbThread_ = new std::thread(&MonoInertialNode::DbReadLoop, this);
+    }
 }
 
 MonoInertialNode::~MonoInertialNode()
 {
+    stopDbThread_.store(true);
+    if (dbThread_ != nullptr)
+    {
+        dbThread_->join();
+        delete dbThread_;
+        dbThread_ = nullptr;
+    }
+
     syncThread_->join();
     delete syncThread_;
 
@@ -67,6 +119,16 @@ MonoInertialNode::~MonoInertialNode()
 
 void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
 {
+    PushImu(msg, false);
+}
+
+void MonoInertialNode::PushImu(const ImuMsg::SharedPtr msg, bool fromDb)
+{
+    if (!fromDb && IsDbMode())
+    {
+        return;
+    }
+
     const double t = Utility::StampToSec(msg->header.stamp) + imuTimeOffset_;
     if (lastImuTs_ >= 0.0 && t <= lastImuTs_)
     {
@@ -110,6 +172,16 @@ void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
 
 void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
 {
+    PushImage(msg, false);
+}
+
+void MonoInertialNode::PushImage(const ImageMsg::SharedPtr msg, bool fromDb)
+{
+    if (!fromDb && IsDbMode())
+    {
+        return;
+    }
+
     const double t = Utility::StampToSec(msg->header.stamp) + cameraTimeOffset_;
     if (lastImageTs_ >= 0.0 && t <= lastImageTs_)
     {
@@ -148,7 +220,7 @@ void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
 
     bufMutexImg_.lock();
 
-    if (!imgBuf_.empty())
+    if (!fromDb && !imgBuf_.empty())
     {
         imageOverwriteCount_.fetch_add(1);
         imgBuf_.pop();
@@ -156,6 +228,134 @@ void MonoInertialNode::GrabImage(const ImageMsg::SharedPtr msg)
     imgBuf_.push(msg);
 
     bufMutexImg_.unlock();
+}
+
+bool MonoInertialNode::IsDbMode() const
+{
+    return activeDataSource_.load() == static_cast<int>(DataSourceMode::DB);
+}
+
+void MonoInertialNode::SwitchDataSource(DataSourceMode mode)
+{
+    const int targetMode = static_cast<int>(mode);
+    const int currentMode = activeDataSource_.load();
+    if (currentMode == targetMode)
+    {
+        return;
+    }
+
+    activeDataSource_.store(targetMode);
+    if (mode == DataSourceMode::DB)
+    {
+        if (dbReaderFinished_.load() && dbThread_ != nullptr)
+        {
+            if (dbThread_->joinable())
+            {
+                dbThread_->join();
+            }
+            delete dbThread_;
+            dbThread_ = nullptr;
+        }
+
+        if (dbThread_ == nullptr)
+        {
+            stopDbThread_.store(false);
+            dbThread_ = new std::thread(&MonoInertialNode::DbReadLoop, this);
+        }
+        RCLCPP_INFO(this->get_logger(), "Data source switched to DB");
+    }
+    else
+    {
+        RCLCPP_INFO(this->get_logger(), "Data source switched to subscribe");
+    }
+}
+
+void MonoInertialNode::DbReadLoop()
+{
+    dbReaderFinished_.store(false);
+    if (dbBagPath_.empty())
+    {
+        RCLCPP_ERROR(this->get_logger(), "DB mode enabled but db_bag_path is empty");
+        dbReaderFinished_.store(true);
+        return;
+    }
+
+    rosbag2_storage::StorageOptions storageOptions;
+    storageOptions.uri = dbBagPath_;
+    storageOptions.storage_id = "sqlite3";
+
+    rosbag2_cpp::ConverterOptions converterOptions;
+    converterOptions.input_serialization_format = "cdr";
+    converterOptions.output_serialization_format = "cdr";
+
+    rosbag2_cpp::Reader reader;
+    try
+    {
+        reader.open(storageOptions, converterOptions);
+    }
+    catch (const std::exception &e)
+    {
+        RCLCPP_ERROR(this->get_logger(), "Failed to open db bag: %s", e.what());
+        dbReaderFinished_.store(true);
+        return;
+    }
+
+    rclcpp::Serialization<ImuMsg> imuSerialization;
+    rclcpp::Serialization<ImageMsg> imageSerialization;
+    RCLCPP_INFO(this->get_logger(), "DB reader started: %s", dbBagPath_.c_str());
+    const double playRate = dbPlayRate_ > 0.0 ? dbPlayRate_ : 1.0;
+    int64_t lastMsgNs = -1;
+
+    while (rclcpp::ok() && !stopDbThread_.load())
+    {
+        if (!IsDbMode())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+        if (!reader.has_next())
+        {
+            RCLCPP_INFO(this->get_logger(), "DB reader reached end of bag");
+            break;
+        }
+
+        std::shared_ptr<rosbag2_storage::SerializedBagMessage> serializedBagMessage = reader.read_next();
+        if (!serializedBagMessage)
+        {
+            continue;
+        }
+
+        const int64_t currentMsgNs = static_cast<int64_t>(serializedBagMessage->time_stamp);
+        if (lastMsgNs >= 0 && currentMsgNs > lastMsgNs)
+        {
+            const int64_t deltaNs = currentMsgNs - lastMsgNs;
+            const int64_t sleepNs = static_cast<int64_t>(static_cast<double>(deltaNs) / playRate);
+            if (sleepNs > 0)
+            {
+                std::this_thread::sleep_for(std::chrono::nanoseconds(sleepNs));
+            }
+        }
+        lastMsgNs = currentMsgNs;
+
+        if (serializedBagMessage->topic_name == dbImuTopic_)
+        {
+            ImuMsg imuMsg;
+            rclcpp::SerializedMessage serializedMsg(*serializedBagMessage->serialized_data);
+            imuSerialization.deserialize_message(&serializedMsg, &imuMsg);
+            PushImu(std::make_shared<ImuMsg>(imuMsg), true);
+        }
+        else if (serializedBagMessage->topic_name == dbCameraTopic_)
+        {
+            ImageMsg imageMsg;
+            rclcpp::SerializedMessage serializedMsg(*serializedBagMessage->serialized_data);
+            imageSerialization.deserialize_message(&serializedMsg, &imageMsg);
+            PushImage(std::make_shared<ImageMsg>(imageMsg), true);
+        }
+    }
+
+    RCLCPP_INFO(this->get_logger(), "DB reader stopped");
+    dbReaderFinished_.store(true);
 }
 
 cv::Mat MonoInertialNode::GetImage(const ImageMsg::SharedPtr msg)
@@ -234,7 +434,8 @@ void MonoInertialNode::SyncWithImu()
             }
 
             Sophus::SE3f Tcw = SLAM_->TrackMonocular(im, tIm, vImuMeas);
-            pubs_.publish(SLAM_, Tcw, tIm);
+            cv::Mat viewerImage = SLAM_->GetTrackedImage(1.0f);
+            pubs_.publish(SLAM_, Tcw, tIm, viewerImage);
 
             ORB_SLAM3::Atlas* pAtlas = SLAM_->GetAtlas();
             const bool imuInitialized = pAtlas != nullptr && pAtlas->isImuInitialized();

@@ -9,3 +9,7 @@ ORB_SLAM3_ROS2/.cache/
 .vscode/
 ORB_SLAM3/.vscode/
 ORB_SLAM3_ROS2/.vscode/
+
+# Extra safety for ROS2 experiment artifacts
+ORB_SLAM3_ROS2/experiments/
+ORB_SLAM3_ROS2/experiments/**

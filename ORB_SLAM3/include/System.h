@@ -183,6 +183,7 @@ public:
     int GetTrackingState();
     std::vector<MapPoint*> GetTrackedMapPoints();
     std::vector<cv::KeyPoint> GetTrackedKeyPointsUn();
+    cv::Mat GetTrackedImage(float imageScale = 1.0f);
 
     // For debugging
     double GetTimeFromIMUInit();

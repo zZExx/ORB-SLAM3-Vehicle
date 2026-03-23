@@ -34,19 +34,34 @@ public:
     ~MonoInertialNode();
 
 private:
+    enum class DataSourceMode
+    {
+        SUBSCRIBE = 0,
+        DB = 1
+    };
+
     void GrabImu(const ImuMsg::SharedPtr msg);
     void GrabImage(const ImageMsg::SharedPtr msg);
+    void PushImu(const ImuMsg::SharedPtr msg, bool fromDb);
+    void PushImage(const ImageMsg::SharedPtr msg, bool fromDb);
     cv::Mat GetImage(const ImageMsg::SharedPtr msg);
     void SyncWithImu();
+    void DbReadLoop();
+    void SwitchDataSource(DataSourceMode mode);
+    bool IsDbMode() const;
 
     rclcpp::Subscription<ImuMsg>::SharedPtr   subImu_;
     rclcpp::Subscription<ImageMsg>::SharedPtr subImg_;
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr localization_service_;
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr source_switch_service_;
 
     SlamPublishers pubs_;
 
     ORB_SLAM3::System *SLAM_;
     std::thread *syncThread_;
+    std::thread *dbThread_{nullptr};
+    std::atomic<bool> stopDbThread_{false};
+    std::atomic<bool> dbReaderFinished_{true};
 
     // IMU
     std::queue<ImuMsg::SharedPtr> imuBuf_;
@@ -65,6 +80,12 @@ private:
     double obsLastLogTime_{-1.0};
     double cameraTimeOffset_{0.0};
     double imuTimeOffset_{0.0};
+    std::string dataSource_{"subscribe"};
+    std::string dbBagPath_;
+    std::string dbCameraTopic_{"/camera/image_raw"};
+    std::string dbImuTopic_{"/imu/data"};
+    double dbPlayRate_{1.0};
+    std::atomic<int> activeDataSource_{static_cast<int>(DataSourceMode::SUBSCRIBE)};
     bool localizationOnly_{false};
     bool initMonoLogged_{false};
     bool imuInitStartLogged_{false};

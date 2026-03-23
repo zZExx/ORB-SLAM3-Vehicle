@@ -1374,6 +1374,13 @@ vector<cv::KeyPoint> System::GetTrackedKeyPointsUn()
     return mTrackedKeyPointsUn;
 }
 
+cv::Mat System::GetTrackedImage(float imageScale)
+{
+    if(!mpFrameDrawer)
+        return cv::Mat();
+    return mpFrameDrawer->DrawFrame(imageScale);
+}
+
 double System::GetTimeFromIMUInit()
 {
     double aux = mpLocalMapper->GetCurrKFTime()-mpLocalMapper->mFirstTs;

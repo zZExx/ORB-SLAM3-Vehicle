@@ -8,8 +8,11 @@
 #include "nav_msgs/msg/path.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/point_cloud2_iterator.hpp"
+#include "sensor_msgs/msg/image.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 #include "tf2_ros/transform_broadcaster.h"
+#include "std_msgs/msg/header.hpp"
+#include <cv_bridge/cv_bridge.h>
 
 #include "System.h"
 #include "Atlas.h"
@@ -17,6 +20,7 @@
 #include "MapPoint.h"
 
 #include <sophus/se3.hpp>
+#include <opencv2/imgproc.hpp>
 #include <vector>
 #include <memory>
 
@@ -26,6 +30,7 @@ struct SlamPublishers
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr             path;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr             kf_path;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr   cloud;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr         image;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr frustum;
     std::unique_ptr<tf2_ros::TransformBroadcaster>                tf_bc;
     nav_msgs::msg::Path                                           path_msg;
@@ -42,13 +47,14 @@ struct SlamPublishers
         path    = node->create_publisher<nav_msgs::msg::Path>("/orb_path",                10);
         kf_path = node->create_publisher<nav_msgs::msg::Path>("/orb_kf_path",            1);
         cloud   = node->create_publisher<sensor_msgs::msg::PointCloud2>("/orb_points",    1);
+        image   = node->create_publisher<sensor_msgs::msg::Image>("/orb_viewer_image",    1);
         frustum = node->create_publisher<visualization_msgs::msg::Marker>("/orb_frustum", 10);
         tf_bc   = std::make_unique<tf2_ros::TransformBroadcaster>(*node);
         path_msg.header.frame_id = "world";
     }
 
     // Tcw = world-to-camera transform returned by TrackMonocular() (T_{cw}: p_c = Tcw * p_w)
-    void publish(ORB_SLAM3::System* slam, const Sophus::SE3f& Tcw, double t_sec)
+    void publish(ORB_SLAM3::System* slam, const Sophus::SE3f& Tcw, double t_sec, const cv::Mat& viewer_image = cv::Mat())
     {
         int state = slam->GetTrackingState();
         if (state != 2 && state != 3) return;  // OK or RECENTLY_LOST only
@@ -114,6 +120,22 @@ struct SlamPublishers
             ++it_x; ++it_y; ++it_z;
         }
         cloud->publish(pc);
+
+        // --- viewer image ---
+        cv::Mat draw = viewer_image.empty() ? slam->GetTrackedImage(1.0f) : viewer_image;
+        if (!draw.empty()) {
+            cv::Mat draw_bgr;
+            if (draw.channels() == 1) {
+                cv::cvtColor(draw, draw_bgr, cv::COLOR_GRAY2BGR);
+            } else {
+                draw_bgr = draw;
+            }
+            sensor_msgs::msg::Image::SharedPtr img_msg =
+                cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", draw_bgr).toImageMsg();
+            img_msg->header.stamp = stamp;
+            img_msg->header.frame_id = "world";
+            image->publish(*img_msg);
+        }
 
         // --- camera frustum (LINE_LIST marker) ---
         visualization_msgs::msg::Marker m;

@@ -7,6 +7,10 @@
 # Unignore all dirs
 !*/
 
+# Keep local index/cache out of git even with !*/ above
+.cache/
+.vscode/
+
 CMakeLists.txt.user
 CMakeLists_modified.txt
 

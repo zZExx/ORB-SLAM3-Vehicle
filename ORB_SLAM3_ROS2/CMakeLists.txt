@@ -16,6 +16,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(rosbag2_cpp REQUIRED)
+find_package(rosbag2_storage REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -61,7 +63,7 @@ target_include_directories(mono-inertial PUBLIC
 )
 
 ament_target_dependencies(mono-inertial
-  rclcpp sensor_msgs cv_bridge std_srvs ORB_SLAM3 Pangolin geometry_msgs nav_msgs tf2_ros tf2_geometry_msgs visualization_msgs
+  rclcpp sensor_msgs cv_bridge std_srvs rosbag2_cpp rosbag2_storage ORB_SLAM3 Pangolin geometry_msgs nav_msgs tf2_ros tf2_geometry_msgs visualization_msgs
 )
 
 # ================== rgbd ==================
