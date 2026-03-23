@@ -17,7 +17,6 @@
   <depend>std_srvs</depend>
   <depend>rosbag2_cpp</depend>
   <depend>rosbag2_storage</depend>
-  <depend>Pangolin</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

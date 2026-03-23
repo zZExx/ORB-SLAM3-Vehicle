@@ -23,7 +23,6 @@ find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
-find_package(Pangolin REQUIRED)
 find_package(ORB_SLAM3 REQUIRED)
 
 # Includes and libs come from FindORB_SLAM3.cmake (ORB_SLAM3_INCLUDE_DIRS, ORB_SLAM3_LIBRARIES).
@@ -44,7 +43,7 @@ target_include_directories(mono PUBLIC
 )
 
 ament_target_dependencies(mono
-  rclcpp sensor_msgs cv_bridge std_srvs ORB_SLAM3 Pangolin geometry_msgs nav_msgs tf2_ros tf2_geometry_msgs visualization_msgs
+  rclcpp sensor_msgs cv_bridge std_srvs ORB_SLAM3 geometry_msgs nav_msgs tf2_ros tf2_geometry_msgs visualization_msgs
 )
 
 # ============ mono-inertial ================
@@ -63,7 +62,7 @@ target_include_directories(mono-inertial PUBLIC
 )
 
 ament_target_dependencies(mono-inertial
-  rclcpp sensor_msgs cv_bridge std_srvs rosbag2_cpp rosbag2_storage ORB_SLAM3 Pangolin geometry_msgs nav_msgs tf2_ros tf2_geometry_msgs visualization_msgs
+  rclcpp sensor_msgs cv_bridge std_srvs rosbag2_cpp rosbag2_storage ORB_SLAM3 geometry_msgs nav_msgs tf2_ros tf2_geometry_msgs visualization_msgs
 )
 
 # ================== rgbd ==================
@@ -82,7 +81,7 @@ target_include_directories(rgbd PUBLIC
 )
 
 ament_target_dependencies(rgbd
-  rclcpp sensor_msgs cv_bridge message_filters std_srvs ORB_SLAM3 Pangolin
+  rclcpp sensor_msgs cv_bridge message_filters std_srvs ORB_SLAM3
 )
 
 # ================== stereo ==================
@@ -101,7 +100,7 @@ target_include_directories(stereo PUBLIC
 )
 
 ament_target_dependencies(stereo
-  rclcpp sensor_msgs cv_bridge message_filters std_srvs ORB_SLAM3 Pangolin
+  rclcpp sensor_msgs cv_bridge message_filters std_srvs ORB_SLAM3
 )
 
 # ============ stereo-inertial ===============
@@ -120,7 +119,7 @@ target_include_directories(stereo-inertial PUBLIC
 )
 
 ament_target_dependencies(stereo-inertial
-  rclcpp sensor_msgs cv_bridge std_srvs ORB_SLAM3 Pangolin
+  rclcpp sensor_msgs cv_bridge std_srvs ORB_SLAM3
 )
 
 # =============== install ====================

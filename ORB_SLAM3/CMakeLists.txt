@@ -42,8 +42,40 @@ MESSAGE("OPENCV VERSION:")
 MESSAGE(${OpenCV_VERSION})
 
 find_package(Eigen3 3.1.0 REQUIRED)
-find_package(Pangolin REQUIRED)
 find_package(realsense2)
+find_package(Pangolin QUIET)
+
+set(PANGOLIN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/Thirdparty/Pangolin)
+if(Pangolin_FOUND)
+  message(STATUS "Using system Pangolin")
+  set(PANGOLIN_LINK_LIBS ${Pangolin_LIBRARIES})
+else()
+  message(STATUS "System Pangolin not found. Falling back to Thirdparty/Pangolin.")
+  if(NOT EXISTS "${PANGOLIN_SOURCE_DIR}/CMakeLists.txt")
+    message(STATUS "Pangolin source not found in Thirdparty. Trying submodule init/update...")
+    execute_process(
+      COMMAND git submodule update --init --recursive Thirdparty/Pangolin
+      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+      RESULT_VARIABLE PANGOLIN_SUBMODULE_RESULT
+    )
+  endif()
+
+  if(NOT EXISTS "${PANGOLIN_SOURCE_DIR}/CMakeLists.txt")
+    message(STATUS "Pangolin submodule unavailable. Cloning from GitHub...")
+    execute_process(
+      COMMAND git clone --depth 1 https://github.com/stevenlovegrove/Pangolin.git "${PANGOLIN_SOURCE_DIR}"
+      RESULT_VARIABLE PANGOLIN_CLONE_RESULT
+    )
+    if(NOT PANGOLIN_CLONE_RESULT EQUAL 0)
+      message(FATAL_ERROR
+        "Failed to clone Pangolin into Thirdparty. "
+        "Please ensure git/network is available, or clone manually to ${PANGOLIN_SOURCE_DIR}.")
+    endif()
+  endif()
+
+  add_subdirectory(${PANGOLIN_SOURCE_DIR} ${PROJECT_BINARY_DIR}/Thirdparty/Pangolin)
+  set(PANGOLIN_LINK_LIBS pangolin)
+endif()
 
 include_directories(
 ${PROJECT_SOURCE_DIR}
@@ -123,7 +155,7 @@ add_subdirectory(Thirdparty/g2o)
 target_link_libraries(${PROJECT_NAME}
 ${OpenCV_LIBS}
 ${EIGEN3_LIBS}
-${Pangolin_LIBRARIES}
+${PANGOLIN_LINK_LIBS}
 ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
 ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
 -lboost_serialization
