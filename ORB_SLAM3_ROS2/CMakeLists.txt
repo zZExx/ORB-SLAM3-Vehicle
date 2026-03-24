@@ -27,6 +27,22 @@ find_package(CURL REQUIRED)
 find_package(ORB_SLAM3 REQUIRED)
 
 # Includes and libs come from FindORB_SLAM3.cmake (ORB_SLAM3_INCLUDE_DIRS, ORB_SLAM3_LIBRARIES).
+#
+# Installed nodes live under lib/${PROJECT_NAME}/; core .so files must be on the loader path.
+# Install ORB_SLAM3, DBoW2, g2o next to the package lib/ and set RPATH to $ORIGIN/.. so
+# `ros2 run` works without LD_LIBRARY_PATH to the source tree.
+
+install(FILES
+  "${ORB_SLAM3_LIBRARY}"
+  "${DBoW2_LIBRARY}"
+  "${g2o_LIBRARY}"
+  DESTINATION lib
+)
+
+set(_ORBS_EXEC_TARGETS mono mono-inertial rgbd stereo stereo-inertial)
+set_target_properties(${_ORBS_EXEC_TARGETS} PROPERTIES
+  INSTALL_RPATH "$ORIGIN/.."
+)
 
 # ================== mono ==================
 add_executable(mono
