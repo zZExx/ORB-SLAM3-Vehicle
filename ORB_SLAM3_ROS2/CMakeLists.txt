@@ -23,6 +23,7 @@ find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(CURL REQUIRED)
 find_package(ORB_SLAM3 REQUIRED)
 
 # Includes and libs come from FindORB_SLAM3.cmake (ORB_SLAM3_INCLUDE_DIRS, ORB_SLAM3_LIBRARIES).
@@ -35,6 +36,7 @@ add_executable(mono
 
 target_link_libraries(mono
   ${OpenCV_LIBS}
+  ${CURL_LIBRARIES}
 )
 
 target_include_directories(mono PUBLIC
@@ -54,6 +56,7 @@ add_executable(mono-inertial
 
 target_link_libraries(mono-inertial
   ${OpenCV_LIBS}
+  ${CURL_LIBRARIES}
 )
 
 target_include_directories(mono-inertial PUBLIC
@@ -73,6 +76,7 @@ add_executable(rgbd
 
 target_link_libraries(rgbd
   ${OpenCV_LIBS}
+  ${CURL_LIBRARIES}
 )
 
 target_include_directories(rgbd PUBLIC
@@ -92,6 +96,7 @@ add_executable(stereo
 
 target_link_libraries(stereo
   ${OpenCV_LIBS}
+  ${CURL_LIBRARIES}
 )
 
 target_include_directories(stereo PUBLIC
@@ -111,6 +116,7 @@ add_executable(stereo-inertial
 
 target_link_libraries(stereo-inertial
   ${OpenCV_LIBS}
+  ${CURL_LIBRARIES}
 )
 
 target_include_directories(stereo-inertial PUBLIC

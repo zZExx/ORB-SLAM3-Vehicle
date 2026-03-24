@@ -42,6 +42,7 @@ MESSAGE("OPENCV VERSION:")
 MESSAGE(${OpenCV_VERSION})
 
 find_package(Eigen3 3.1.0 REQUIRED)
+find_package(CURL REQUIRED)
 find_package(realsense2)
 
 set(PANGOLIN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/Thirdparty/Pangolin)
@@ -151,6 +152,7 @@ target_link_libraries(${PROJECT_NAME}
 ${OpenCV_LIBS}
 ${EIGEN3_LIBS}
 pangolin
+${CURL_LIBRARIES}
 ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
 ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
 -lboost_serialization
