@@ -164,90 +164,220 @@ void Viewer::Run()
     mbFinished = false;
     mbStopped = false;
 
-    pangolin::CreateWindowAndBind("ORB-SLAM3: Viewer",1024,768);
+    pangolin::CreateWindowAndBind("ORB-SLAM3: Map Viewer",1024,768);
 
+    // 3D Mouse handler requires depth testing to be enabled
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Issue specific OpenGl we might need
+    glEnable (GL_BLEND);
+    glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     pangolin::CreatePanel("menu").SetBounds(0.0,1.0,0.0,pangolin::Attach::Pix(175));
-    pangolin::Var<bool> menuFollowCamera("menu.Follow Camera",true,true);
+    pangolin::Var<bool> menuFollowCamera("menu.Follow Camera",false,true);
+    pangolin::Var<bool> menuCamView("menu.Camera View",false,false);
+    pangolin::Var<bool> menuTopView("menu.Top View",false,false);
+    // pangolin::Var<bool> menuSideView("menu.Side View",false,false);
     pangolin::Var<bool> menuShowPoints("menu.Show Points",true,true);
     pangolin::Var<bool> menuShowKeyFrames("menu.Show KeyFrames",true,true);
+    pangolin::Var<bool> menuShowGraph("menu.Show Graph",false,true);
+    pangolin::Var<bool> menuShowInertialGraph("menu.Show Inertial Graph",true,true);
+    pangolin::Var<bool> menuLocalizationMode("menu.Localization Mode",false,true);
+    pangolin::Var<bool> menuReset("menu.Reset",false,false);
+    pangolin::Var<bool> menuStop("menu.Stop",false,false);
+    pangolin::Var<bool> menuStepByStep("menu.Step By Step",false,true);  // false, true
+    pangolin::Var<bool> menuStep("menu.Step",false,false);
 
+    pangolin::Var<bool> menuShowOptLba("menu.Show LBA opt", false, true);
+    // Define Camera Render Object (for view / scene browsing)
     pangolin::OpenGlRenderState s_cam(
-        pangolin::ProjectionMatrix(1024,768,mViewpointF,mViewpointF,512,389,0.1,1000),
-        pangolin::ModelViewLookAt(mViewpointX,mViewpointY,mViewpointZ, 0,0,0,0.0,-1.0,0.0)
-    );
+                pangolin::ProjectionMatrix(1024,768,mViewpointF,mViewpointF,512,389,0.1,1000),
+                pangolin::ModelViewLookAt(mViewpointX,mViewpointY,mViewpointZ, 0,0,0,0.0,-1.0, 0.0)
+                );
 
+    // Add named OpenGL viewport to window and provide 3D Handler
     pangolin::View& d_cam = pangolin::CreateDisplay()
-        .SetBounds(0.3,1.0,pangolin::Attach::Pix(175),1.0,-1024.0f/768.0f)
-        .SetHandler(new pangolin::Handler3D(s_cam));
+            .SetBounds(0.0, 1.0, pangolin::Attach::Pix(175), 1.0, -1024.0f/768.0f)
+            .SetHandler(new pangolin::Handler3D(s_cam));
 
-    pangolin::View& d_image = pangolin::CreateDisplay()
-        .SetBounds(0.0,0.3,pangolin::Attach::Pix(175),1.0)
-        .SetAspect((float)mImageWidth / (float)mImageHeight);
-
-    pangolin::GlTexture imageTexture(
-        mImageWidth, mImageHeight,
-        GL_RGB,false,0,GL_BGR,GL_UNSIGNED_BYTE
-    );
-
-    pangolin::OpenGlMatrix Twc, Ow;
+    pangolin::OpenGlMatrix Twc, Twr;
     Twc.SetIdentity();
+    pangolin::OpenGlMatrix Ow; // Oriented with g in the z axis
     Ow.SetIdentity();
+    cv::namedWindow("ORB-SLAM3: Current Frame");
 
+    bool bFollow = true;
+    bool bLocalizationMode = false;
+    bool bStepByStep = false;
+    bool bCameraView = true;
+
+    if(mpTracker->mSensor == mpSystem->MONOCULAR || mpTracker->mSensor == mpSystem->STEREO || mpTracker->mSensor == mpSystem->RGBD)
+    {
+        menuShowGraph = true;
+    }
+
+    float trackedImageScale = mpTracker->GetImageScale();
+
+    cout << "Starting the Viewer" << endl;
     while(1)
     {
-        if(CheckFinish())
-            break;
-
-        if(Stop())
-        {
-            while(isStopped())
-                usleep(3000);
-        }
-
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         mpMapDrawer->GetCurrentOpenGLCameraMatrix(Twc,Ow);
 
-        d_cam.Activate(s_cam);
+        if(mbStopTrack)
+        {
+            menuStepByStep = true;
+            mbStopTrack = false;
+        }
 
-        if(menuFollowCamera)
+        if(menuFollowCamera && bFollow)
+        {
+            if(bCameraView)
+                s_cam.Follow(Twc);
+            else
+                s_cam.Follow(Ow);
+        }
+        else if(menuFollowCamera && !bFollow)
+        {
+            if(bCameraView)
+            {
+                s_cam.SetProjectionMatrix(pangolin::ProjectionMatrix(1024,768,mViewpointF,mViewpointF,512,389,0.1,1000));
+                s_cam.SetModelViewMatrix(pangolin::ModelViewLookAt(mViewpointX,mViewpointY,mViewpointZ, 0,0,0,0.0,-1.0, 0.0));
+                s_cam.Follow(Twc);
+            }
+            else
+            {
+                s_cam.SetProjectionMatrix(pangolin::ProjectionMatrix(1024,768,3000,3000,512,389,0.1,1000));
+                s_cam.SetModelViewMatrix(pangolin::ModelViewLookAt(0,0.01,10, 0,0,0,0.0,0.0, 1.0));
+                s_cam.Follow(Ow);
+            }
+            bFollow = true;
+        }
+        else if(!menuFollowCamera && bFollow)
+        {
+            bFollow = false;
+        }
+
+        if(menuCamView)
+        {
+            menuCamView = false;
+            bCameraView = true;
+            s_cam.SetProjectionMatrix(pangolin::ProjectionMatrix(1024,768,mViewpointF,mViewpointF,512,389,0.1,10000));
+            s_cam.SetModelViewMatrix(pangolin::ModelViewLookAt(mViewpointX,mViewpointY,mViewpointZ, 0,0,0,0.0,-1.0, 0.0));
             s_cam.Follow(Twc);
+        }
 
-        glClearColor(1.0,1.0,1.0,1.0);
+        if(menuTopView && mpMapDrawer->mpAtlas->isImuInitialized())
+        {
+            menuTopView = false;
+            bCameraView = false;
+            s_cam.SetProjectionMatrix(pangolin::ProjectionMatrix(1024,768,3000,3000,512,389,0.1,10000));
+            s_cam.SetModelViewMatrix(pangolin::ModelViewLookAt(0,0.01,50, 0,0,0,0.0,0.0, 1.0));
+            s_cam.Follow(Ow);
+        }
 
+        if(menuLocalizationMode && !bLocalizationMode)
+        {
+            mpSystem->ActivateLocalizationMode();
+            bLocalizationMode = true;
+        }
+        else if(!menuLocalizationMode && bLocalizationMode)
+        {
+            mpSystem->DeactivateLocalizationMode();
+            bLocalizationMode = false;
+        }
+
+        if(menuStepByStep && !bStepByStep)
+        {
+            //cout << "Viewer: step by step" << endl;
+            mpTracker->SetStepByStep(true);
+            bStepByStep = true;
+        }
+        else if(!menuStepByStep && bStepByStep)
+        {
+            mpTracker->SetStepByStep(false);
+            bStepByStep = false;
+        }
+
+        if(menuStep)
+        {
+            mpTracker->mbStep = true;
+            menuStep = false;
+        }
+
+
+        d_cam.Activate(s_cam);
+        glClearColor(1.0f,1.0f,1.0f,1.0f);
         mpMapDrawer->DrawCurrentCamera(Twc);
-
-        if(menuShowKeyFrames)
-            mpMapDrawer->DrawKeyFrames(true,true,true,false);
-
+        if(menuShowKeyFrames || menuShowGraph || menuShowInertialGraph || menuShowOptLba)
+            mpMapDrawer->DrawKeyFrames(menuShowKeyFrames,menuShowGraph, menuShowInertialGraph, menuShowOptLba);
         if(menuShowPoints)
             mpMapDrawer->DrawMapPoints();
 
-        cv::Mat im = mpFrameDrawer->DrawFrame(1.0);
-        if(!im.empty())
-        {
-            if(im.type() == CV_8UC1)
-                cv::cvtColor(im, im, cv::COLOR_GRAY2BGR);
-        
-            imageTexture.Upload(im.data, GL_BGR, GL_UNSIGNED_BYTE);
-        
-            d_image.Activate();
-        
-            glDisable(GL_DEPTH_TEST);
-        
-            glColor3f(1.0,1.0,1.0);
-            imageTexture.RenderToViewportFlipY();
-        
-            glEnable(GL_DEPTH_TEST);
-        }
-
         pangolin::FinishFrame();
 
-        usleep(3000);
+        cv::Mat toShow;
+        cv::Mat im = mpFrameDrawer->DrawFrame(trackedImageScale);
+
+        if(both){
+            cv::Mat imRight = mpFrameDrawer->DrawRightFrame(trackedImageScale);
+            cv::hconcat(im,imRight,toShow);
+        }
+        else{
+            toShow = im;
+        }
+
+        if(mImageViewerScale != 1.f)
+        {
+            int width = toShow.cols * mImageViewerScale;
+            int height = toShow.rows * mImageViewerScale;
+            cv::resize(toShow, toShow, cv::Size(width, height));
+        }
+
+        cv::imshow("ORB-SLAM3: Current Frame",toShow);
+        cv::waitKey(mT);
+
+        if(menuReset)
+        {
+            menuShowGraph = true;
+            menuShowInertialGraph = true;
+            menuShowKeyFrames = true;
+            menuShowPoints = true;
+            menuLocalizationMode = false;
+            if(bLocalizationMode)
+                mpSystem->DeactivateLocalizationMode();
+            bLocalizationMode = false;
+            bFollow = true;
+            menuFollowCamera = true;
+            mpSystem->ResetActiveMap();
+            menuReset = false;
+        }
+
+        if(menuStop)
+        {
+            if(bLocalizationMode)
+                mpSystem->DeactivateLocalizationMode();
+
+            // Stop all threads
+            mpSystem->Shutdown();
+
+            // Save camera trajectory
+            mpSystem->SaveTrajectoryEuRoC("CameraTrajectory.txt");
+            mpSystem->SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
+            menuStop = false;
+        }
+
+        if(Stop())
+        {
+            while(isStopped())
+            {
+                usleep(3000);
+            }
+        }
+
+        if(CheckFinish())
+            break;
     }
 
     SetFinish();
