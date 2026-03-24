@@ -9,6 +9,7 @@
 #include <rosbag2_cpp/converter_options.hpp>
 #include <sensor_msgs/image_encodings.hpp>
 #include <std_srvs/srv/set_bool.hpp>
+#include <chrono>
 #include <deque>
 
 using std::placeholders::_1;
@@ -310,9 +311,13 @@ void MonoInertialNode::DbReadLoop()
 
     rclcpp::Serialization<ImuMsg> imuSerialization;
     rclcpp::Serialization<ImageMsg> imageSerialization;
-    RCLCPP_INFO(this->get_logger(), "DB reader started: %s", dbBagPath_.c_str());
+    const double playRate = dbPlayRate_ > 0.0 ? dbPlayRate_ : 1.0;
+    RCLCPP_INFO(this->get_logger(), "DB reader started: %s (db_play_rate=%.3f)", dbBagPath_.c_str(), playRate);
     std::deque<ORB_SLAM3::IMU::Point> imuWindow;
     double lastImageTs = -1.0;
+    bool playbackClockInit = false;
+    std::chrono::steady_clock::time_point playbackT0Wall;
+    double playbackT0Sensor = 0.0;
 
     while (rclcpp::ok() && !stopDbThread_.load())
     {
@@ -378,6 +383,25 @@ void MonoInertialNode::DbReadLoop()
             if (bClahe_)
             {
                 clahe_->apply(im, im);
+            }
+
+            if (!playbackClockInit)
+            {
+                playbackT0Wall = std::chrono::steady_clock::now();
+                playbackT0Sensor = tIm;
+                playbackClockInit = true;
+            }
+            else
+            {
+                const double sensorDelta = tIm - playbackT0Sensor;
+                const std::chrono::duration<double> targetElapsed(sensorDelta / playRate);
+                const std::chrono::steady_clock::time_point deadline =
+                    playbackT0Wall + std::chrono::duration_cast<std::chrono::steady_clock::duration>(targetElapsed);
+                const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+                if (deadline > now)
+                {
+                    std::this_thread::sleep_until(deadline);
+                }
             }
 
             ProcessTrackedFrame(im, tIm, vImuMeas);
