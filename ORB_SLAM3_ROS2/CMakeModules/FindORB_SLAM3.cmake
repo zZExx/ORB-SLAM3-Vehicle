@@ -69,6 +69,5 @@ set(ORB_SLAM3_INCLUDE_DIRS
   ${ORB_SLAM3_INCLUDE_DIR}
   ${ORB_SLAM3_INCLUDE_DIR}/CameraModels
   ${ORB_SLAM3_ROOT_DIR}/Thirdparty/Sophus
-  ${ORB_SLAM3_ROOT_DIR}/Thirdparty/Pangolin/include
   ${DBoW2_INCLUDE_DIR}
   ${EIGEN3_INCLUDE_DIRS})

@@ -71,6 +71,13 @@ if(NOT EXISTS "${PANGOLIN_SOURCE_DIR}/CMakeLists.txt")
   endif()
 endif()
 
+# Do not build Pangolin examples/tools: they call find_package(Pangolin) and may pick up a
+# mismatched /usr/local install. ORB_SLAM3 must compile against this subdirectory only.
+set(BUILD_EXAMPLES OFF CACHE BOOL "ORB_SLAM3: skip Pangolin examples" FORCE)
+set(BUILD_TOOLS OFF CACHE BOOL "ORB_SLAM3: skip Pangolin tools" FORCE)
+# OpenEXR headers can trigger -Werror=type-limits inside Pangolin's pango_image on some toolchains.
+set(BUILD_PANGOLIN_LIBOPENEXR OFF CACHE BOOL "ORB_SLAM3: skip Pangolin OpenEXR" FORCE)
+
 add_subdirectory(${PANGOLIN_SOURCE_DIR} ${PROJECT_BINARY_DIR}/Thirdparty/Pangolin)
 
 include_directories(
@@ -78,7 +85,6 @@ ${PROJECT_SOURCE_DIR}
 ${PROJECT_SOURCE_DIR}/include
 ${PROJECT_SOURCE_DIR}/include/CameraModels
 ${PROJECT_SOURCE_DIR}/Thirdparty/Sophus
-${PROJECT_SOURCE_DIR}/Thirdparty/Pangolin/include
 ${EIGEN3_INCLUDE_DIR}
 )
 
@@ -148,10 +154,15 @@ include/IMUInitializer.h)
 
 add_subdirectory(Thirdparty/g2o)
 
+# New Pangolin layout has no top-level "include/" or CMake target "pangolin". Link component
+# targets so BUILD_INTERFACE include dirs and OpenGL defines (epoxy vs GLEW) match this build.
 target_link_libraries(${PROJECT_NAME}
 ${OpenCV_LIBS}
 ${EIGEN3_LIBS}
-pangolin
+pango_display
+pango_plot
+pango_video
+pango_image
 ${CURL_LIBRARIES}
 ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
 ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so

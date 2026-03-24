@@ -93,6 +93,9 @@ Override ROS 2 package path: `export ORB_SLAM3_ROS2_DIR=/path/to/ORB_SLAM3_ROS2`
 3. **`ORB_SLAM3 not found` at CMake time**  
    Set `ORB_SLAM3_ROOT_DIR` or use the sibling `ORB_SLAM3` layout; see [`REPO_LAYOUT.md`](../REPO_LAYOUT.md).
 
+4. **`error while loading shared libraries: libORB_SLAM3.so`**  
+   After `colcon build`, install the workspace and **source** `install/local_setup.bash` (or `setup.bash`). This package installs `libORB_SLAM3.so`, `libDBoW2.so`, and `libg2o.so` under `install/<ws>/orbslam3/lib/` and sets the node RPATH so they are found. If you copied only `install/orbslam3/lib/orbslam3/*` without the sibling `.so` files in `install/orbslam3/lib/`, or run the binary without sourcing setup, the loader will fail. Temporary workaround: `export LD_LIBRARY_PATH=/path/to/ORB_SLAM3/lib:$LD_LIBRARY_PATH`.
+
 ## How to use
 1. Source the workspace  
 ```
