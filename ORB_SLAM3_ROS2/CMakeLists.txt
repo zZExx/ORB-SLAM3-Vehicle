@@ -45,7 +45,7 @@ target_include_directories(mono PUBLIC
 )
 
 ament_target_dependencies(mono
-  rclcpp sensor_msgs cv_bridge std_srvs ORB_SLAM3 geometry_msgs nav_msgs tf2_ros tf2_geometry_msgs visualization_msgs
+  rclcpp sensor_msgs cv_bridge std_srvs rosbag2_cpp rosbag2_storage ORB_SLAM3 geometry_msgs nav_msgs tf2_ros tf2_geometry_msgs visualization_msgs
 )
 
 # ============ mono-inertial ================
