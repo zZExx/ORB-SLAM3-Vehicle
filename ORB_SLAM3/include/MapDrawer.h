@@ -24,9 +24,12 @@
 #include"MapPoint.h"
 #include"KeyFrame.h"
 #include "Settings.h"
-#include<pangolin/pangolin.h>
 
 #include<mutex>
+
+namespace pangolin {
+class OpenGlMatrix;
+}
 
 namespace ORB_SLAM3
 {

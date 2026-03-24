@@ -62,9 +62,13 @@ find_package_handle_standard_args(ORB_SLAM3 DEFAULT_MSG
 
 mark_as_advanced(ORB_SLAM3_INCLUDE_DIR ORB_SLAM3_LIBRARY)
 
+find_package(Eigen3 REQUIRED NO_MODULE)
+
 set(ORB_SLAM3_LIBRARIES ${ORB_SLAM3_LIBRARY} ${DBoW2_LIBRARY} ${g2o_LIBRARY})
 set(ORB_SLAM3_INCLUDE_DIRS
   ${ORB_SLAM3_INCLUDE_DIR}
   ${ORB_SLAM3_INCLUDE_DIR}/CameraModels
   ${ORB_SLAM3_ROOT_DIR}/Thirdparty/Sophus
-  ${DBoW2_INCLUDE_DIR})
+  ${ORB_SLAM3_ROOT_DIR}/Thirdparty/Pangolin/include
+  ${DBoW2_INCLUDE_DIR}
+  ${EIGEN3_INCLUDE_DIRS})
