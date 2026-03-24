@@ -2161,12 +2161,12 @@ void Tracking::Track()
                         if(!bOK)
                         {
                             sTrackFailReason = "TrackReferenceKeyFrame failed in state OK after motion model";
-                            // if(mSensor == System::MONOCULAR)
-                            // {
-                            //     bOK = TrackWithHomography();
-                            //     if(!bOK)
-                            //         sTrackFailReason = "TrackWithHomography failed in state OK";
-                            // }
+                            if(mSensor == System::MONOCULAR)
+                            {
+                                bOK = TrackWithHomography();
+                                if(!bOK)
+                                    sTrackFailReason = "TrackWithHomography failed in state OK";
+                            }
                         }
                     }
                 }
