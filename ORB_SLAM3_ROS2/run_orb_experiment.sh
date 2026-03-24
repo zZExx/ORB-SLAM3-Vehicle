@@ -45,7 +45,7 @@ trap cleanup EXIT
 pushd "$OUT_DIR" >/dev/null
 
 USE_DB_READER="false"
-if [ "$MODE" = "mono-inertial" ]; then
+if [ "$MODE" = "mono-inertial" ] || [ "$MODE" = "mono" ]; then
   if [ "$INPUT_SOURCE" = "db" ]; then
     USE_DB_READER="true"
   elif [ "$INPUT_SOURCE" = "auto" ]; then
@@ -106,9 +106,19 @@ if [ "$MODE" = "mono-inertial" ]; then
       -p data_source:=subscribe &
   fi
 elif [ "$MODE" = "mono" ]; then
-  setsid ros2 run orbslam3 mono "$VOCAB" "$CONFIG_PATH" "$VIZ" \
-    --ros-args \
-    -r camera:="$CAM_TOPIC" &
+  if [ "$USE_DB_READER" = "true" ]; then
+    setsid ros2 run orbslam3 mono "$VOCAB" "$CONFIG_PATH" "$VIZ" \
+      --ros-args \
+      -p data_source:=db \
+      -p db_bag_path:="$BAG_PATH" \
+      -p db_camera_topic:="$CAM_TOPIC" \
+      -p db_play_rate:="$RATE" &
+  else
+    setsid ros2 run orbslam3 mono "$VOCAB" "$CONFIG_PATH" "$VIZ" \
+      --ros-args \
+      -r camera:="$CAM_TOPIC" \
+      -p data_source:=subscribe &
+  fi
 else
   echo "Unknown mode: $MODE (use mono or mono-inertial)"
   exit 1
