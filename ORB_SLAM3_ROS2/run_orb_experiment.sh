@@ -58,33 +58,6 @@ if [ "$MODE" = "mono-inertial" ] || [ "$MODE" = "mono" ]; then
   fi
 fi
 
-if [ "$USE_DB_READER" = "false" ]; then
-  ros2 bag play "$BAG_PATH" --topics "$CAM_TOPIC" "$IMU_TOPIC" -r "$RATE" &
-  BAG_PID=$!
-  sleep 1
-else
-  DB_TIMEOUT_SEC=$(python3 - "$BAG_PATH" "$RATE" <<'PY'
-import sqlite3
-import sys
-
-bag_path = sys.argv[1]
-rate = float(sys.argv[2]) if float(sys.argv[2]) > 0 else 1.0
-conn = sqlite3.connect(bag_path)
-cur = conn.cursor()
-cur.execute("SELECT MIN(timestamp), MAX(timestamp) FROM messages;")
-row = cur.fetchone()
-conn.close()
-if not row or row[0] is None or row[1] is None:
-    print(120)
-    raise SystemExit(0)
-duration_sec = (row[1] - row[0]) / 1e9
-# Add a fixed safety buffer so SLAM can flush and save outputs.
-timeout_sec = int(duration_sec / rate + 30)
-print(timeout_sec if timeout_sec > 30 else 30)
-PY
-)
-fi
-
 if [ "$MODE" = "mono-inertial" ]; then
   if [ "$USE_DB_READER" = "true" ]; then
     setsid ros2 run orbslam3 mono-inertial "$VOCAB" "$CONFIG_PATH" false "$VIZ" \
@@ -126,9 +99,33 @@ fi
 
 SLAM_PGID=$!
 
-if [ -n "${BAG_PID:-}" ]; then
+if [ "$USE_DB_READER" = "false" ]; then
+  # Ensure subscriptions are ready before starting bag playback.
+  sleep 10
+  ros2 bag play "$BAG_PATH" --topics "$CAM_TOPIC" "$IMU_TOPIC" -r "$RATE" &
+  BAG_PID=$!
   wait "$BAG_PID"
-elif [ -n "${DB_TIMEOUT_SEC:-}" ]; then
+else
+  DB_TIMEOUT_SEC=$(python3 - "$BAG_PATH" "$RATE" <<'PY'
+import sqlite3
+import sys
+
+bag_path = sys.argv[1]
+rate = float(sys.argv[2]) if float(sys.argv[2]) > 0 else 1.0
+conn = sqlite3.connect(bag_path)
+cur = conn.cursor()
+cur.execute("SELECT MIN(timestamp), MAX(timestamp) FROM messages;")
+row = cur.fetchone()
+conn.close()
+if not row or row[0] is None or row[1] is None:
+    print(120)
+    raise SystemExit(0)
+duration_sec = (row[1] - row[0]) / 1e9
+# Add a fixed safety buffer so SLAM can flush and save outputs.
+timeout_sec = int(duration_sec / rate + 30)
+print(timeout_sec if timeout_sec > 30 else 30)
+PY
+)
   # DB mode has no ros2 bag play process; wait roughly bag_duration/rate then stop SLAM.
   for _ in $(seq 1 "$DB_TIMEOUT_SEC"); do
     if ! kill -0 "-$SLAM_PGID" 2>/dev/null; then
