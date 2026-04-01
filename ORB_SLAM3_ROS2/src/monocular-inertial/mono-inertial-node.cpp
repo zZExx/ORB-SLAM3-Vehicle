@@ -10,6 +10,7 @@
 #include <sensor_msgs/image_encodings.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <chrono>
+#include <algorithm>
 #include <deque>
 
 using std::placeholders::_1;
@@ -29,7 +30,11 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM, const std::string &
     this->declare_parameter<std::string>("db_bag_path", "");
     this->declare_parameter<std::string>("db_camera_topic", "/camera/image_raw");
     this->declare_parameter<std::string>("db_imu_topic", "/imu/data");
+    this->declare_parameter<std::string>("db_wheel_topic", "/wheel_odom");
     this->declare_parameter<double>("db_play_rate", 1.0);
+    this->declare_parameter<bool>("use_wheel", false);
+    this->declare_parameter<double>("wheel_time_offset", 0.0);
+    this->declare_parameter<std::string>("wheel_topic", "wheel_odom");
     this->get_parameter("camera_time_offset", cameraTimeOffset_);
     this->get_parameter("imu_time_offset", imuTimeOffset_);
     this->get_parameter("localization_only", localizationOnly_);
@@ -37,10 +42,15 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM, const std::string &
     this->get_parameter("db_bag_path", dbBagPath_);
     this->get_parameter("db_camera_topic", dbCameraTopic_);
     this->get_parameter("db_imu_topic", dbImuTopic_);
+    this->get_parameter("db_wheel_topic", dbWheelTopic_);
     this->get_parameter("db_play_rate", dbPlayRate_);
+    this->get_parameter("use_wheel", useWheel_);
+    this->get_parameter("wheel_time_offset", wheelTimeOffset_);
+    this->get_parameter("wheel_topic", wheelTopic_);
 
     std::cout << "Equal: " << doEqual_ << std::endl;
-    std::cout << "Time offset: camera=" << cameraTimeOffset_ << " imu=" << imuTimeOffset_ << std::endl;
+    std::cout << "Time offset: camera=" << cameraTimeOffset_ << " imu=" << imuTimeOffset_ << " wheel=" << wheelTimeOffset_ << std::endl;
+    std::cout << "use_wheel: " << (useWheel_ ? "true" : "false") << " wheel_topic: " << wheelTopic_ << std::endl;
 
     if (dataSource_ == "db")
     {
@@ -52,7 +62,18 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM, const std::string &
     }
 
     rclcpp::SensorDataQoS sensor_qos;
-    subImu_ = this->create_subscription<ImuMsg>("imu", sensor_qos, std::bind(&MonoInertialNode::GrabImu, this, _1));
+    rclcpp::QoS imu_qos(rclcpp::KeepLast(200));
+    imu_qos.reliable();
+    imu_qos.durability_volatile();
+
+    subImu_ = this->create_subscription<ImuMsg>("imu", imu_qos, std::bind(&MonoInertialNode::GrabImu, this, _1));
+    if (useWheel_)
+    {
+        rclcpp::QoS wheel_qos(rclcpp::KeepLast(200));
+        wheel_qos.reliable();
+        subWheel_ = this->create_subscription<OdomMsg>(
+            wheelTopic_, wheel_qos, std::bind(&MonoInertialNode::GrabWheel, this, _1));
+    }
     subImg_ = this->create_subscription<ImageMsg>("camera", sensor_qos, std::bind(&MonoInertialNode::GrabImage, this, _1));
 
     localization_service_ = this->create_service<std_srvs::srv::SetBool>(
@@ -131,6 +152,35 @@ void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)
     PushImu(msg, false);
 }
 
+void MonoInertialNode::GrabWheel(const OdomMsg::SharedPtr msg)
+{
+    if (!useWheel_)
+    {
+        return;
+    }
+    if (!msg)
+    {
+        return;
+    }
+    if (IsDbMode())
+    {
+        return;
+    }
+    const double t = Utility::StampToSec(msg->header.stamp) + wheelTimeOffset_;
+    const double vx = msg->twist.twist.linear.x;
+    std::lock_guard<std::mutex> lk(wheelMutex_);
+    if (lastWheelTs_ >= 0.0 && t <= lastWheelTs_)
+    {
+        return;
+    }
+    lastWheelTs_ = t;
+    wheelBuf_.push_back(std::make_pair(t, vx));
+    while (wheelBuf_.size() > 2000U)
+    {
+        wheelBuf_.pop_front();
+    }
+}
+
 void MonoInertialNode::PushImu(const ImuMsg::SharedPtr msg, bool fromDb)
 {
     if (!fromDb && IsDbMode())
@@ -201,7 +251,28 @@ void MonoInertialNode::PushImage(const ImageMsg::SharedPtr msg, bool fromDb)
     {
         double dt = t - lastImageTs_;
         if (dt > 0)
+        {
+            if (imageFreqSamples_.size() >= 5)
+            {
+                double meanHz = 0.0;
+                for (double f : imageFreqSamples_)
+                {
+                    meanHz += f;
+                }
+                meanHz /= static_cast<double>(imageFreqSamples_.size());
+                if (meanHz > 0.0)
+                {
+                    const double expectedDt = 1.0 / meanHz;
+                    if (dt > 2.0 * expectedDt)
+                    {
+                        RCLCPP_WARN(this->get_logger(),
+                                    "Image timestamp jump detected: dt=%.6f expected=%.6f sec, publisher may drop frames",
+                                    dt, expectedDt);
+                    }
+                }
+            }
             imageFreqSamples_.push_back(1.0 / dt);
+        }
     }
     lastImageTs_ = t;
     const double now = this->get_clock()->now().seconds();
@@ -228,6 +299,7 @@ void MonoInertialNode::PushImage(const ImageMsg::SharedPtr msg, bool fromDb)
     }
 
     bufMutexImg_.lock();
+    totalImagesReceived_.fetch_add(1);
 
     if (!fromDb && !imgBuf_.empty())
     {
@@ -311,6 +383,7 @@ void MonoInertialNode::DbReadLoop()
 
     rclcpp::Serialization<ImuMsg> imuSerialization;
     rclcpp::Serialization<ImageMsg> imageSerialization;
+    rclcpp::Serialization<OdomMsg> wheelSerialization;
     const double playRate = dbPlayRate_ > 0.0 ? dbPlayRate_ : 1.0;
     RCLCPP_INFO(this->get_logger(), "DB reader started: %s (db_play_rate=%.3f)", dbBagPath_.c_str(), playRate);
     std::deque<ORB_SLAM3::IMU::Point> imuWindow;
@@ -349,6 +422,25 @@ void MonoInertialNode::DbReadLoop()
             cv::Point3f gyr(imuMsg.angular_velocity.x, imuMsg.angular_velocity.y, imuMsg.angular_velocity.z);
             imuWindow.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
         }
+        else if (useWheel_ && serializedBagMessage->topic_name == dbWheelTopic_)
+        {
+            OdomMsg odomMsg;
+            rclcpp::SerializedMessage serializedMsg(*serializedBagMessage->serialized_data);
+            wheelSerialization.deserialize_message(&serializedMsg, &odomMsg);
+            const double t = Utility::StampToSec(odomMsg.header.stamp) + wheelTimeOffset_;
+            const double vx = odomMsg.twist.twist.linear.x;
+            std::lock_guard<std::mutex> lk(wheelMutex_);
+            if (lastWheelTs_ >= 0.0 && t <= lastWheelTs_)
+            {
+                continue;
+            }
+            lastWheelTs_ = t;
+            wheelBuf_.push_back(std::make_pair(t, vx));
+            while (wheelBuf_.size() > 2000U)
+            {
+                wheelBuf_.pop_front();
+            }
+        }
         else if (serializedBagMessage->topic_name == dbCameraTopic_)
         {
             ImageMsg imageMsg;
@@ -373,6 +465,14 @@ void MonoInertialNode::DbReadLoop()
             if (vImuMeas.empty())
             {
                 continue;
+            }
+
+            if (useWheel_)
+            {
+                for (ORB_SLAM3::IMU::Point &pt : vImuMeas)
+                {
+                    pt.encoder_v = SampleWheelLinearX(pt.t + wheelTimeOffset_ - imuTimeOffset_);
+                }
             }
 
             cv::Mat im = GetImage(std::make_shared<ImageMsg>(imageMsg));
@@ -415,6 +515,7 @@ void MonoInertialNode::DbReadLoop()
 
 void MonoInertialNode::ProcessTrackedFrame(const cv::Mat &im, const double tIm, const std::vector<ORB_SLAM3::IMU::Point> &vImuMeas)
 {
+    totalImagesProcessed_.fetch_add(1);
     Sophus::SE3f Tcw = SLAM_->TrackMonocular(im, tIm, vImuMeas);
     cv::Mat viewerImage = SLAM_->GetTrackedImage(1.0f);
     pubs_.publish(SLAM_, Tcw, tIm, viewerImage);
@@ -511,7 +612,8 @@ void MonoInertialNode::SyncWithImu()
                     double t = Utility::StampToSec(imuBuf_.front()->header.stamp) + imuTimeOffset_;
                     cv::Point3f acc(imuBuf_.front()->linear_acceleration.x, imuBuf_.front()->linear_acceleration.y, imuBuf_.front()->linear_acceleration.z);
                     cv::Point3f gyr(imuBuf_.front()->angular_velocity.x, imuBuf_.front()->angular_velocity.y, imuBuf_.front()->angular_velocity.z);
-                    vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
+                    const double enc = useWheel_ ? SampleWheelLinearX(t + wheelTimeOffset_ - imuTimeOffset_) : 0.0;
+                    vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t, enc));
                     imuBuf_.pop();
                 }
             }
@@ -543,9 +645,17 @@ void MonoInertialNode::SyncWithImu()
                 const int droppedImage = droppedOutOfOrderImage_.exchange(0);
                 const int overwrittenImage = imageOverwriteCount_.exchange(0);
                 const int waitingCount = waitingForImuCount_.exchange(0);
-                // RCLCPP_INFO(this->get_logger(),
-                //             "Obs(1s): empty_imu_windows=%d dropped_imu_ooo=%d dropped_img_ooo=%d overwritten_img=%d wait_for_imu=%d",
-                //             emptyWindows, droppedImu, droppedImage, overwrittenImage, waitingCount);
+                const int totalReceived = totalImagesReceived_.load();
+                const int totalProcessed = totalImagesProcessed_.load();
+                static int prevTotalReceived = 0;
+                static int prevTotalProcessed = 0;
+                const int recv1s = totalReceived - prevTotalReceived;
+                const int proc1s = totalProcessed - prevTotalProcessed;
+                prevTotalReceived = totalReceived;
+                prevTotalProcessed = totalProcessed;
+                RCLCPP_INFO(this->get_logger(),
+                            "Obs(1s): total_recv=%d total_proc=%d recv_1s=%d proc_1s=%d empty_imu_windows=%d dropped_imu_ooo=%d dropped_img_ooo=%d overwritten_img=%d wait_for_imu=%d",
+                            totalReceived, totalProcessed, recv1s, proc1s, emptyWindows, droppedImu, droppedImage, overwrittenImage, waitingCount);
                 obsLastLogTime_ = now;
             }
 
@@ -558,4 +668,40 @@ void MonoInertialNode::SyncWithImu()
             std::this_thread::sleep_for(tSleep);
         }
     }
+}
+
+double MonoInertialNode::SampleWheelLinearX(double t) const
+{
+    if (!useWheel_)
+    {
+        return 0.0;
+    }
+    std::lock_guard<std::mutex> lk(wheelMutex_);
+    if (wheelBuf_.empty())
+    {
+        return 0.0;
+    }
+    if (wheelBuf_.size() == 1U)
+    {
+        return wheelBuf_.front().second;
+    }
+    auto it = std::lower_bound(wheelBuf_.begin(), wheelBuf_.end(), t,
+                               [](const std::pair<double, double> &p, double tt) { return p.first < tt; });
+    if (it == wheelBuf_.begin())
+    {
+        return wheelBuf_.front().second;
+    }
+    if (it == wheelBuf_.end())
+    {
+        return wheelBuf_.back().second;
+    }
+    const auto it0 = it - 1;
+    const double t0 = it0->first;
+    const double t1 = it->first;
+    if (t1 <= t0)
+    {
+        return it0->second;
+    }
+    const double a = (t - t0) / (t1 - t0);
+    return (1.0 - a) * it0->second + a * it->second;
 }

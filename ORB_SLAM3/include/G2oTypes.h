@@ -630,7 +630,26 @@ public:
     }
 };
 
+/** Inertial edge with gravity + scale + wheel encoder displacement residual (12-dim). */
+class EdgeInertialGSE : public g2o::BaseMultiEdge<12, Vector12d>
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
+    EdgeInertialGSE(IMU::Preintegrated* pInt);
+
+    virtual bool read(std::istream& is){return false;}
+    virtual bool write(std::ostream& os) const{return false;}
+
+    void computeError();
+    virtual void linearizeOplus();
+
+    const Eigen::Matrix3d JRg, JVg, JPg;
+    const Eigen::Matrix3d JVa, JPa;
+    IMU::Preintegrated* mpInt;
+    const double dt;
+    Eigen::Vector3d g, gI;
+};
 
 class EdgeGyroRW : public g2o::BaseBinaryEdge<3,Eigen::Vector3d,VertexGyroBias,VertexGyroBias>
 {

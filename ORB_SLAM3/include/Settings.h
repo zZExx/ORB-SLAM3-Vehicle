@@ -25,6 +25,8 @@
 
 #include "CameraModels/GeometricCamera.h"
 
+#include <Eigen/Core>
+
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,6 +93,12 @@ namespace ORB_SLAM3 {
         float imuFrequency() {return imuFrequency_;}
         Sophus::SE3f Tbc() {return Tbc_;}
         bool insertKFsWhenLost() {return insertKFsWhenLost_;}
+
+        bool wheelUse() const { return bWheelUse_; }
+        Eigen::Vector3f wheelTImuWheel() const { return wheelTImuWheel_; }
+        Eigen::Matrix3f wheelRImuWheel() const { return wheelRImuWheel_; }
+        float wheelNoiseVel() const { return wheelNoiseVel_; }
+        float wheelWalkVel() const { return wheelWalkVel_; }
 
         float depthMapFactor() {return depthMapFactor_;}
 
@@ -192,6 +200,12 @@ namespace ORB_SLAM3 {
         float imuFrequency_;
         Sophus::SE3f Tbc_;
         bool insertKFsWhenLost_;
+
+        bool bWheelUse_{false};
+        Eigen::Vector3f wheelTImuWheel_{Eigen::Vector3f::Zero()};
+        Eigen::Matrix3f wheelRImuWheel_{Eigen::Matrix3f::Identity()};
+        float wheelNoiseVel_{0.05f};
+        float wheelWalkVel_{1e-4f};
 
         /*
          * RGBD stuff

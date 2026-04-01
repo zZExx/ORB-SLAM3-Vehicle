@@ -48,13 +48,17 @@ class Point
 public:
     Point(const float &acc_x, const float &acc_y, const float &acc_z,
              const float &ang_vel_x, const float &ang_vel_y, const float &ang_vel_z,
-             const double &timestamp): a(acc_x,acc_y,acc_z), w(ang_vel_x,ang_vel_y,ang_vel_z), t(timestamp){}
+             const double &timestamp): a(acc_x,acc_y,acc_z), w(ang_vel_x,ang_vel_y,ang_vel_z), t(timestamp), encoder_v(0.0){}
     Point(const cv::Point3f Acc, const cv::Point3f Gyro, const double &timestamp):
-        a(Acc.x,Acc.y,Acc.z), w(Gyro.x,Gyro.y,Gyro.z), t(timestamp){}
+        a(Acc.x,Acc.y,Acc.z), w(Gyro.x,Gyro.y,Gyro.z), t(timestamp), encoder_v(0.0){}
+    Point(const cv::Point3f Acc, const cv::Point3f Gyro, const double &timestamp, const double &enc_v):
+        a(Acc.x,Acc.y,Acc.z), w(Gyro.x,Gyro.y,Gyro.z), t(timestamp), encoder_v(enc_v){}
 public:
     Eigen::Vector3f a;
     Eigen::Vector3f w;
     double t;
+    /** Wheel linear velocity along body x (m/s), aligned to IMU timestamp. */
+    double encoder_v;
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
@@ -112,10 +116,17 @@ public:
     }
 
     Calib(const Calib &calib);
-    Calib(){mbIsSet = false;}
+    Calib(): mbIsSet(false), mbUseWheel(false), mWheelTbo(Eigen::Vector3f::Zero()), mWheelRbo(Eigen::Matrix3f::Identity())
+    {
+        Nga_en.setZero();
+        NgaWalk_en.setZero();
+    }
 
     //void Set(const cv::Mat &cvTbc, const float &ng, const float &na, const float &ngw, const float &naw);
     void Set(const Sophus::SE3<float> &sophTbc, const float &ng, const float &na, const float &ngw, const float &naw);
+    /** Optional wheel odometry (body x velocity). Noise is std-dev per sqrt(Hz); scaled internally like IMU. */
+    void SetWheel(const bool use, const Eigen::Vector3f &t_imu_wheel, const Eigen::Matrix3f &r_imu_wheel,
+                  const float noise_vel_sqrt_hz, const float walk_vel_sqrt_hz);
 
 public:
     // Sophus/Eigen implementation
@@ -123,6 +134,12 @@ public:
     Sophus::SE3<float> mTbc;
     Eigen::DiagonalMatrix<float,6> Cov, CovWalk;
     bool mbIsSet;
+
+    bool mbUseWheel;
+    Eigen::Vector3f mWheelTbo;
+    Eigen::Matrix3f mWheelRbo;
+    Eigen::DiagonalMatrix<float,9> Nga_en;
+    Eigen::DiagonalMatrix<float,9> NgaWalk_en;
 };
 
 //Integration of 1 gyro measurement
@@ -166,17 +183,26 @@ class Preintegrated
         ar & bu;
         ar & boost::serialization::make_array(db.data(), db.size());
         ar & mvMeasurements;
+        ar & mbUseWheel;
+        ar & boost::serialization::make_array(encoder_velocity.data(), encoder_velocity.size());
+        ar & boost::serialization::make_array(Rbo.data(), Rbo.size());
+        ar & boost::serialization::make_array(Tbo.data(), Tbo.size());
+        ar & boost::serialization::make_array(covariance_enc.data(), covariance_enc.size());
+        ar & boost::serialization::make_array(Nga_en.diagonal().data(), Nga_en.diagonal().size());
+        ar & boost::serialization::make_array(NgaWalk_en.diagonal().data(), NgaWalk_en.diagonal().size());
     }
 
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Preintegrated(const Bias &b_, const Calib &calib);
     Preintegrated(Preintegrated* pImuPre);
-    Preintegrated() {}
+    Preintegrated(): mbUseWheel(false), Rbo(Eigen::Matrix3f::Identity()), Tbo(Eigen::Vector3f::Zero()),
+        encoder_velocity(Eigen::Vector3f::Zero()), covariance_enc(Eigen::Matrix<float,21,21>::Zero()) {}
     ~Preintegrated() {}
     void CopyFrom(Preintegrated* pImuPre);
     void Initialize(const Bias &b_);
     void IntegrateNewMeasurement(const Eigen::Vector3f &acceleration, const Eigen::Vector3f &angVel, const float &dt);
+    void IntegrateNewMeasurement(const Eigen::Vector3f &acceleration, const Eigen::Vector3f &angVel, const float &dt, const double &encoder_v);
     void Reintegrate();
     void MergePrevious(Preintegrated* pPrev);
     void SetNewBias(const Bias &bu_);
@@ -220,6 +246,13 @@ public:
     Eigen::Matrix3f JRg, JVg, JVa, JPg, JPa;
     Eigen::Vector3f avgA, avgW;
 
+    bool mbUseWheel;
+    Eigen::Matrix3f Rbo;
+    Eigen::Vector3f Tbo;
+    Eigen::Vector3f encoder_velocity;
+    Eigen::Matrix<float,21,21> covariance_enc;
+    Eigen::DiagonalMatrix<float,9> Nga_en;
+    Eigen::DiagonalMatrix<float,9> NgaWalk_en;
 
 private:
     // Updated bias
@@ -236,13 +269,16 @@ private:
             ar & boost::serialization::make_array(a.data(), a.size());
             ar & boost::serialization::make_array(w.data(), w.size());
             ar & t;
+            ar & enc;
         }
 
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         integrable(){}
-        integrable(const Eigen::Vector3f &a_, const Eigen::Vector3f &w_ , const float &t_):a(a_),w(w_),t(t_){}
+        integrable(const Eigen::Vector3f &a_, const Eigen::Vector3f &w_ , const float &t_):a(a_),w(w_),t(t_),enc(0.0){}
+        integrable(const Eigen::Vector3f &a_, const Eigen::Vector3f &w_ , const float &t_, const double enc_):a(a_),w(w_),t(t_),enc(enc_){}
         Eigen::Vector3f a, w;
         float t;
+        double enc;
     };
 
     std::vector<integrable> mvMeasurements;

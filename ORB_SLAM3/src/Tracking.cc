@@ -721,6 +721,12 @@ void Tracking::newParameterLoader(Settings *settings) {
 
     const float sf = sqrt(mImuFreq);
     mpImuCalib = new IMU::Calib(Tbc,Ng*sf,Na*sf,Ngw/sf,Naw/sf);
+    if(settings->wheelUse())
+    {
+        const float sigV = settings->wheelNoiseVel() * sf;
+        const float sigW = settings->wheelWalkVel() / sf;
+        mpImuCalib->SetWheel(true, settings->wheelTImuWheel(), settings->wheelRImuWheel(), sigV, sigW);
+    }
 
     mpImuPreintegratedFromLastKF = new IMU::Preintegrated(IMU::Bias(),*mpImuCalib);
 }
@@ -1527,6 +1533,50 @@ bool Tracking::ParseIMUParamFile(cv::FileStorage &fSettings)
 
     mpImuCalib = new IMU::Calib(Tbc,Ng*sf,Na*sf,Ngw/sf,Naw/sf);
 
+    cv::FileNode nWheel = fSettings["Wheel.use"];
+    if(!nWheel.empty() && static_cast<int>(fSettings["Wheel.use"]) != 0)
+    {
+        Eigen::Vector3f tbo(0.f,0.f,0.f);
+        Eigen::Matrix3f Rbo = Eigen::Matrix3f::Identity();
+        cv::FileNode nT = fSettings["Wheel.T_imu_wheel"];
+        if(!nT.empty() && nT.isSeq() && nT.size()>=3)
+        {
+            tbo(0) = static_cast<float>(nT[0]);
+            tbo(1) = static_cast<float>(nT[1]);
+            tbo(2) = static_cast<float>(nT[2]);
+        }
+        else
+        {
+            cv::Mat cvT;
+            fSettings["Wheel.T_imu_wheel"] >> cvT;
+            if(!cvT.empty() && cvT.total()>=3)
+            {
+                tbo(0) = cvT.at<float>(0);
+                tbo(1) = cvT.at<float>(1);
+                tbo(2) = cvT.at<float>(2);
+            }
+        }
+        cv::Mat cvR;
+        fSettings["Wheel.R_imu_wheel"] >> cvR;
+        if(!cvR.empty() && cvR.rows==3 && cvR.cols==3)
+        {
+            for(int r=0;r<3;r++)
+                for(int c=0;c<3;c++)
+                    Rbo(r,c) = cvR.at<float>(r,c);
+        }
+        float nvel = 0.05f;
+        cv::FileNode nNv = fSettings["Wheel.NoiseVel"];
+        if(!nNv.empty() && nNv.isReal())
+            nvel = static_cast<float>(nNv.real());
+        float wvel = 1e-4f;
+        cv::FileNode nWv = fSettings["Wheel.WalkVel"];
+        if(!nWv.empty() && nWv.isReal())
+            wvel = static_cast<float>(nWv.real());
+        const float sigV = nvel * sf;
+        const float sigW = wvel / sf;
+        mpImuCalib->SetWheel(true, tbo, Rbo, sigV, sigW);
+    }
+
     mpImuPreintegratedFromLastKF = new IMU::Preintegrated(IMU::Bias(),*mpImuCalib);
 
 
@@ -1795,6 +1845,7 @@ void Tracking::PreintegrateIMU()
     {
         float tstep;
         Eigen::Vector3f acc, angVel;
+        double encoder_v = 0.0;
         if((i==0) && (i<(n-1)))
         {
             float tab = mvImuFromLastFrame[i+1].t-mvImuFromLastFrame[i].t;
@@ -1803,12 +1854,15 @@ void Tracking::PreintegrateIMU()
                     (mvImuFromLastFrame[i+1].a-mvImuFromLastFrame[i].a)*(tini/tab))*0.5f;
             angVel = (mvImuFromLastFrame[i].w+mvImuFromLastFrame[i+1].w-
                     (mvImuFromLastFrame[i+1].w-mvImuFromLastFrame[i].w)*(tini/tab))*0.5f;
+            encoder_v = (mvImuFromLastFrame[i].encoder_v+mvImuFromLastFrame[i+1].encoder_v-
+                    (mvImuFromLastFrame[i+1].encoder_v-mvImuFromLastFrame[i].encoder_v)*(static_cast<double>(tini)/static_cast<double>(tab)))*0.5;
             tstep = mvImuFromLastFrame[i+1].t-mCurrentFrame.mpPrevFrame->mTimeStamp;
         }
         else if(i<(n-1))
         {
             acc = (mvImuFromLastFrame[i].a+mvImuFromLastFrame[i+1].a)*0.5f;
             angVel = (mvImuFromLastFrame[i].w+mvImuFromLastFrame[i+1].w)*0.5f;
+            encoder_v = (mvImuFromLastFrame[i].encoder_v+mvImuFromLastFrame[i+1].encoder_v)*0.5;
             tstep = mvImuFromLastFrame[i+1].t-mvImuFromLastFrame[i].t;
         }
         else if((i>0) && (i==(n-1)))
@@ -1819,19 +1873,30 @@ void Tracking::PreintegrateIMU()
                     (mvImuFromLastFrame[i+1].a-mvImuFromLastFrame[i].a)*(tend/tab))*0.5f;
             angVel = (mvImuFromLastFrame[i].w+mvImuFromLastFrame[i+1].w-
                     (mvImuFromLastFrame[i+1].w-mvImuFromLastFrame[i].w)*(tend/tab))*0.5f;
+            encoder_v = (mvImuFromLastFrame[i].encoder_v+mvImuFromLastFrame[i+1].encoder_v-
+                    (mvImuFromLastFrame[i+1].encoder_v-mvImuFromLastFrame[i].encoder_v)*(static_cast<double>(tend)/static_cast<double>(tab)))*0.5;
             tstep = mCurrentFrame.mTimeStamp-mvImuFromLastFrame[i].t;
         }
         else if((i==0) && (i==(n-1)))
         {
             acc = mvImuFromLastFrame[i].a;
             angVel = mvImuFromLastFrame[i].w;
+            encoder_v = mvImuFromLastFrame[i].encoder_v;
             tstep = mCurrentFrame.mTimeStamp-mCurrentFrame.mpPrevFrame->mTimeStamp;
         }
 
         if (!mpImuPreintegratedFromLastKF)
             cout << "mpImuPreintegratedFromLastKF does not exist" << endl;
-        mpImuPreintegratedFromLastKF->IntegrateNewMeasurement(acc,angVel,tstep);
-        pImuPreintegratedFromLastFrame->IntegrateNewMeasurement(acc,angVel,tstep);
+        if(mpImuCalib->mbUseWheel)
+        {
+            mpImuPreintegratedFromLastKF->IntegrateNewMeasurement(acc,angVel,tstep,encoder_v);
+            pImuPreintegratedFromLastFrame->IntegrateNewMeasurement(acc,angVel,tstep,encoder_v);
+        }
+        else
+        {
+            mpImuPreintegratedFromLastKF->IntegrateNewMeasurement(acc,angVel,tstep);
+            pImuPreintegratedFromLastFrame->IntegrateNewMeasurement(acc,angVel,tstep);
+        }
     }
 
     mCurrentFrame.mpImuPreintegratedFrame = pImuPreintegratedFromLastFrame;

@@ -12,3 +12,7 @@
 # 注意
 1. 如果硬件设备确实无法达成目标，需要给出详细解释及证据
 2. 如果ORB-SLAM3框架无法达成目标，需要给出详细解释及证据
+
+## 工程路径
+1.  ORB-SLAM3 算法逻辑 /home/sunrise/ORB_SLAM3/ORB_SLAM3
+2. ROS2封装层 /home/sunrise/ORB_SLAM3/ORB_SLAM3_ROS2

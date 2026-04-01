@@ -46,6 +46,26 @@ IMU.GyroWalk: 3.1204694408e-06
 IMU.AccWalk: 7.36392444071e-05
 IMU.Frequency: 200
 
+#--------------------------------------------------------------------------------------------
+# Optional wheel (nav_msgs/Odometry twist.linear.x in m/s). ROS2: set use_wheel:=true and
+# wheel_topic / wheel_time_offset. Enable optimization path with Wheel.use: 1 below.
+# T_imu_wheel: 3x1 translation (m), R_imu_wheel: 3x3 rotation IMU <- wheel frame.
+# NoiseVel / WalkVel: std-dev per sqrt(Hz), scaled like IMU noise in Tracking.
+#--------------------------------------------------------------------------------------------
+Wheel.use: 1
+Wheel.T_imu_wheel: !!opencv-matrix
+  rows: 3
+  cols: 1
+  dt: f
+  data: [-0.18, 0.0, -0.08]
+Wheel.R_imu_wheel: !!opencv-matrix
+  rows: 3
+  cols: 3
+  dt: f
+  data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+Wheel.NoiseVel: 0.05
+Wheel.WalkVel: 0.0001
+
 # Init-stage gating parameters (consumed by Tracking)
 Init.MinKeyFrames: 8
 Init.Timeout: 3.0

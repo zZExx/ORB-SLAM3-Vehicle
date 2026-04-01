@@ -429,6 +429,42 @@ namespace ORB_SLAM3 {
         else{
             insertKFsWhenLost_ = true;
         }
+
+        bWheelUse_ = false;
+        wheelTImuWheel_.setZero();
+        wheelRImuWheel_.setIdentity();
+        wheelNoiseVel_ = 0.05f;
+        wheelWalkVel_ = 1e-4f;
+        bool wfound = false;
+        const int wuse = readParameter<int>(fSettings,"Wheel.use",wfound,false);
+        if(wfound && wuse != 0)
+        {
+            bWheelUse_ = true;
+            bool tfound = false;
+            cv::Mat tnode = readParameter<cv::Mat>(fSettings,"Wheel.T_imu_wheel",tfound,false);
+            if(tfound && !tnode.empty() && tnode.total()>=3)
+            {
+                wheelTImuWheel_(0) = tnode.at<float>(0);
+                wheelTImuWheel_(1) = tnode.at<float>(1);
+                wheelTImuWheel_(2) = tnode.at<float>(2);
+            }
+            bool rfound = false;
+            cv::Mat rnode = readParameter<cv::Mat>(fSettings,"Wheel.R_imu_wheel",rfound,false);
+            if(rfound && !rnode.empty() && rnode.rows==3 && rnode.cols==3)
+            {
+                for(int r=0;r<3;r++)
+                    for(int c=0;c<3;c++)
+                        wheelRImuWheel_(r,c) = rnode.at<float>(r,c);
+            }
+            bool nf = false;
+            const float nv = readParameter<float>(fSettings,"Wheel.NoiseVel",nf,false);
+            if(nf)
+                wheelNoiseVel_ = nv;
+            bool wf = false;
+            const float wv = readParameter<float>(fSettings,"Wheel.WalkVel",wf,false);
+            if(wf)
+                wheelWalkVel_ = wv;
+        }
     }
 
     void Settings::readRGBD(cv::FileStorage& fSettings) {

@@ -3039,7 +3039,7 @@ Eigen::MatrixXd Optimizer::Marginalize(const Eigen::MatrixXd &H, const int &star
     return res;
 }
 
-void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &scale, Eigen::Vector3d &bg, Eigen::Vector3d &ba, bool bMono, Eigen::MatrixXd  &covInertial, bool bFixedVel, bool bGauss, float priorG, float priorA)
+void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &scale, Eigen::Vector3d &bg, Eigen::Vector3d &ba, bool bMono, Eigen::MatrixXd  &covInertial, bool bFixedVel, bool bGauss, float priorG, float priorA, bool bUseWheelEncoder)
 {
     Verbose::PrintMess("inertial optimization", Verbose::VERBOSITY_NORMAL);
     int its = 200;
@@ -3150,27 +3150,47 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
             g2o::HyperGraph::Vertex* VG = optimizer.vertex(maxKFid*2+2);
             g2o::HyperGraph::Vertex* VA = optimizer.vertex(maxKFid*2+3);
             g2o::HyperGraph::Vertex* VGDir = optimizer.vertex(maxKFid*2+4);
-            g2o::HyperGraph::Vertex* VS = optimizer.vertex(maxKFid*2+5);
-            if(!VP1 || !VV1 || !VG || !VA || !VP2 || !VV2 || !VGDir || !VS)
+            g2o::HyperGraph::Vertex* VSv = optimizer.vertex(maxKFid*2+5);
+            if(!VP1 || !VV1 || !VG || !VA || !VP2 || !VV2 || !VGDir || !VSv)
             {
-                cout << "Error" << VP1 << ", "<< VV1 << ", "<< VG << ", "<< VA << ", " << VP2 << ", " << VV2 <<  ", "<< VGDir << ", "<< VS <<endl;
+                cout << "Error" << VP1 << ", "<< VV1 << ", "<< VG << ", "<< VA << ", " << VP2 << ", " << VV2 <<  ", "<< VGDir << ", "<< VSv <<endl;
 
                 continue;
             }
-            EdgeInertialGS* ei = new EdgeInertialGS(pKFi->mpImuPreintegrated);
-            ei->setVertex(0,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VP1));
-            ei->setVertex(1,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VV1));
-            ei->setVertex(2,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VG));
-            ei->setVertex(3,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VA));
-            ei->setVertex(4,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VP2));
-            ei->setVertex(5,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VV2));
-            ei->setVertex(6,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VGDir));
-            ei->setVertex(7,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VS));
+            const bool wheelEdge = bUseWheelEncoder && pKFi->mpImuPreintegrated && pKFi->mpImuPreintegrated->mbUseWheel
+                && (std::fabs(pKFi->mpImuPreintegrated->encoder_velocity(0)) > 1e-7f)
+                && (pKFi->mpImuPreintegrated->covariance_enc.block<12,12>(0,0).norm() > 1e-12f);
+            if(wheelEdge)
+            {
+                EdgeInertialGSE* eiw = new EdgeInertialGSE(pKFi->mpImuPreintegrated);
+                eiw->setVertex(0,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VP1));
+                eiw->setVertex(1,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VV1));
+                eiw->setVertex(2,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VG));
+                eiw->setVertex(3,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VA));
+                eiw->setVertex(4,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VP2));
+                eiw->setVertex(5,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VV2));
+                eiw->setVertex(6,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VGDir));
+                eiw->setVertex(7,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VSv));
+                vppUsedKF.push_back(make_pair(pKFi->mPrevKF,pKFi));
+                optimizer.addEdge(eiw);
+            }
+            else
+            {
+                EdgeInertialGS* ei = new EdgeInertialGS(pKFi->mpImuPreintegrated);
+                ei->setVertex(0,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VP1));
+                ei->setVertex(1,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VV1));
+                ei->setVertex(2,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VG));
+                ei->setVertex(3,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VA));
+                ei->setVertex(4,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VP2));
+                ei->setVertex(5,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VV2));
+                ei->setVertex(6,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VGDir));
+                ei->setVertex(7,dynamic_cast<g2o::OptimizableGraph::Vertex*>(VSv));
 
-            vpei.push_back(ei);
+                vpei.push_back(ei);
 
-            vppUsedKF.push_back(make_pair(pKFi->mPrevKF,pKFi));
-            optimizer.addEdge(ei);
+                vppUsedKF.push_back(make_pair(pKFi->mPrevKF,pKFi));
+                optimizer.addEdge(ei);
+            }
 
         }
     }

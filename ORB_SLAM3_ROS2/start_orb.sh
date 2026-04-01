@@ -19,6 +19,10 @@ BAG_RATE="0.5"
 INPUT_SOURCE="auto"
 TBC_SCALE="0.5"
 NOISE_SCALES="2.0,4.0,8.0"
+USE_WHEEL="false"
+WHEEL_TOPIC="/wheel_odom"
+WHEEL_OFFSET="0.0"
+DB_WHEEL_TOPIC="/wheel_odom"
 
 usage() {
   cat <<'EOF'
@@ -38,6 +42,10 @@ Options:
   --bag PATH
   --bag_rate FLOAT
   --input_source auto|subscribe|db
+  --use_wheel true|false
+  --wheel_topic TOPIC
+  --wheel_offset FLOAT
+  --db_wheel_topic TOPIC
   --tbc_scale FLOAT
   --noise_scales CSV
   --help
@@ -58,6 +66,10 @@ while [ $# -gt 0 ]; do
     --bag) BAG_PATH="$2"; shift 2 ;;
     --bag_rate) BAG_RATE="$2"; shift 2 ;;
     --input_source) INPUT_SOURCE="$2"; shift 2 ;;
+    --use_wheel) USE_WHEEL="$2"; shift 2 ;;
+    --wheel_topic) WHEEL_TOPIC="$2"; shift 2 ;;
+    --wheel_offset) WHEEL_OFFSET="$2"; shift 2 ;;
+    --db_wheel_topic) DB_WHEEL_TOPIC="$2"; shift 2 ;;
     --tbc_scale) TBC_SCALE="$2"; shift 2 ;;
     --noise_scales) NOISE_SCALES="$2"; shift 2 ;;
     --help) usage; exit 0 ;;
@@ -130,6 +142,10 @@ if [ "$MODE" = "sweep-noise" ]; then
         "$IMU_TOPIC" \
         "$BAG_RATE" \
         "$INPUT_SOURCE" \
+        "$USE_WHEEL" \
+        "$WHEEL_TOPIC" \
+        "$WHEEL_OFFSET" \
+        "$DB_WHEEL_TOPIC" \
     )
   done
   exit 0
@@ -147,7 +163,11 @@ if [ -n "$BAG_PATH" ]; then
     "$CAM_TOPIC" \
     "$IMU_TOPIC" \
     "$BAG_RATE" \
-    "$INPUT_SOURCE"
+    "$INPUT_SOURCE" \
+    "$USE_WHEEL" \
+    "$WHEEL_TOPIC" \
+    "$WHEEL_OFFSET" \
+    "$DB_WHEEL_TOPIC"
   exit 0
 fi
 
@@ -158,7 +178,8 @@ if [ "$MODE" = "mono" ]; then
 elif [ "$MODE" = "mono-inertial" ]; then
   run_with_log ros2 run orbslam3 mono-inertial "$VOCAB" "$CONFIG" false "$VIZ" \
     --ros-args -r camera:="$CAM_TOPIC" -r imu:="$IMU_TOPIC" \
-    -p camera_time_offset:="$CAM_OFFSET" -p imu_time_offset:="$IMU_OFFSET"
+    -p camera_time_offset:="$CAM_OFFSET" -p imu_time_offset:="$IMU_OFFSET" \
+    -p use_wheel:="$USE_WHEEL" -p wheel_topic:="$WHEEL_TOPIC" -p wheel_time_offset:="$WHEEL_OFFSET"
 else
   echo "Unknown mode: $MODE (use mono, mono-inertial, or sweep-noise)"
   popd >/dev/null

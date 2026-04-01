@@ -110,6 +110,7 @@ public:
     float GetImageScale();
     float GetImuInitMaxTime() const { return mImuInitMaxTime; }
     float GetImuInitMinMotion() const { return mImuInitMinMotion; }
+    bool UseWheelEncoder() const { return mpImuCalib != nullptr && mpImuCalib->mbUseWheel; }
 
 #ifdef REGISTER_LOOP
     void RequestStop();

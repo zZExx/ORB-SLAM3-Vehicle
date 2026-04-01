@@ -108,14 +108,21 @@ Preintegrated::Preintegrated(const Bias &b_, const Calib &calib)
 {
     Nga = calib.Cov;
     NgaWalk = calib.CovWalk;
+    mbUseWheel = calib.mbUseWheel;
+    Rbo = calib.mWheelRbo;
+    Tbo = calib.mWheelTbo;
+    Nga_en = calib.Nga_en;
+    NgaWalk_en = calib.NgaWalk_en;
     Initialize(b_);
 }
 
 // Copy constructor
 Preintegrated::Preintegrated(Preintegrated* pImuPre): dT(pImuPre->dT),C(pImuPre->C), Info(pImuPre->Info),
      Nga(pImuPre->Nga), NgaWalk(pImuPre->NgaWalk), b(pImuPre->b), dR(pImuPre->dR), dV(pImuPre->dV),
-    dP(pImuPre->dP), JRg(pImuPre->JRg), JVg(pImuPre->JVg), JVa(pImuPre->JVa), JPg(pImuPre->JPg), JPa(pImuPre->JPa),
-    avgA(pImuPre->avgA), avgW(pImuPre->avgW), bu(pImuPre->bu), db(pImuPre->db), mvMeasurements(pImuPre->mvMeasurements)
+     dP(pImuPre->dP), JRg(pImuPre->JRg), JVg(pImuPre->JVg), JVa(pImuPre->JVa), JPg(pImuPre->JPg), JPa(pImuPre->JPa),
+     avgA(pImuPre->avgA), avgW(pImuPre->avgW), bu(pImuPre->bu), db(pImuPre->db), mvMeasurements(pImuPre->mvMeasurements),
+     mbUseWheel(pImuPre->mbUseWheel), Rbo(pImuPre->Rbo), Tbo(pImuPre->Tbo), encoder_velocity(pImuPre->encoder_velocity),
+     covariance_enc(pImuPre->covariance_enc), Nga_en(pImuPre->Nga_en), NgaWalk_en(pImuPre->NgaWalk_en)
 {
 
 }
@@ -141,6 +148,13 @@ void Preintegrated::CopyFrom(Preintegrated* pImuPre)
     bu.CopyFrom(pImuPre->bu);
     db = pImuPre->db;
     mvMeasurements = pImuPre->mvMeasurements;
+    mbUseWheel = pImuPre->mbUseWheel;
+    Rbo = pImuPre->Rbo;
+    Tbo = pImuPre->Tbo;
+    encoder_velocity = pImuPre->encoder_velocity;
+    covariance_enc = pImuPre->covariance_enc;
+    Nga_en = pImuPre->Nga_en;
+    NgaWalk_en = pImuPre->NgaWalk_en;
 }
 
 
@@ -163,6 +177,8 @@ void Preintegrated::Initialize(const Bias &b_)
     avgW.setZero();
     dT=0.0f;
     mvMeasurements.clear();
+    encoder_velocity.setZero();
+    covariance_enc.setZero();
 }
 
 void Preintegrated::Reintegrate()
@@ -171,7 +187,12 @@ void Preintegrated::Reintegrate()
     const std::vector<integrable> aux = mvMeasurements;
     Initialize(bu);
     for(size_t i=0;i<aux.size();i++)
-        IntegrateNewMeasurement(aux[i].a,aux[i].w,aux[i].t);
+    {
+        if(mbUseWheel)
+            IntegrateNewMeasurement(aux[i].a,aux[i].w,aux[i].t,aux[i].enc);
+        else
+            IntegrateNewMeasurement(aux[i].a,aux[i].w,aux[i].t);
+    }
 }
 
 void Preintegrated::IntegrateNewMeasurement(const Eigen::Vector3f &acceleration, const Eigen::Vector3f &angVel, const float &dt)
@@ -234,6 +255,83 @@ void Preintegrated::IntegrateNewMeasurement(const Eigen::Vector3f &acceleration,
     dT += dt;
 }
 
+void Preintegrated::IntegrateNewMeasurement(const Eigen::Vector3f &acceleration, const Eigen::Vector3f &angVel, const float &dt, const double &encoder_v)
+{
+    if(!mbUseWheel)
+    {
+        IntegrateNewMeasurement(acceleration,angVel,dt);
+        return;
+    }
+
+    mvMeasurements.push_back(integrable(acceleration,angVel,dt,encoder_v));
+
+    Eigen::Matrix<float,9,9> A;
+    A.setIdentity();
+    Eigen::Matrix<float,9,6> B;
+    B.setZero();
+
+    Eigen::Vector3f acc, accW;
+    acc << acceleration(0)-b.bax, acceleration(1)-b.bay, acceleration(2)-b.baz;
+    accW << angVel(0)-b.bwx, angVel(1)-b.bwy, angVel(2)-b.bwz;
+
+    avgA = (dT*avgA + dR*acc*dt)/(dT+dt);
+    avgW = (dT*avgW + accW*dt)/(dT+dt);
+
+    dP = dP + dV*dt + 0.5f*dR*acc*dt*dt;
+    dV = dV + dR*acc*dt;
+
+    const Eigen::Vector3f encoder_cast(static_cast<float>(encoder_v),0.f,0.f);
+    encoder_velocity = encoder_velocity + dR*Rbo*encoder_cast*dt;
+
+    Eigen::Matrix<float,3,3> Wacc = Sophus::SO3f::hat(acc);
+
+    A.block<3,3>(3,0) = -dR*dt*Wacc;
+    A.block<3,3>(6,0) = -0.5f*dR*dt*dt*Wacc;
+    A.block<3,3>(6,3) = Eigen::DiagonalMatrix<float,3>(dt, dt, dt);
+    B.block<3,3>(3,3) = dR*dt;
+    B.block<3,3>(6,3) = 0.5f*dR*dt*dt;
+
+    JPa = JPa + JVa*dt -0.5f*dR*dt*dt;
+    JPg = JPg + JVg*dt -0.5f*dR*dt*dt*Wacc*JRg;
+    JVa = JVa - dR*dt;
+    JVg = JVg - dR*dt*Wacc*JRg;
+
+    const Eigen::Matrix3f dR_past = dR;
+    IntegratedRotation dRi(angVel,b,dt);
+    dR = NormalizeRotation(dR*dRi.deltaR);
+
+    A.block<3,3>(0,0) = dRi.deltaR.transpose();
+    B.block<3,3>(0,0) = dRi.rightJ*dt;
+
+    C.block<9,9>(0,0) = A * C.block<9,9>(0,0) * A.transpose() + B*Nga*B.transpose();
+    C.block<6,6>(9,9) += NgaWalk;
+
+    JRg = dRi.deltaR.transpose()*JRg - dRi.rightJ*dt;
+
+    dT += dt;
+
+    Eigen::Matrix<float,12,12> F;
+    F.setZero();
+    Eigen::Matrix<float,12,9> Vmat;
+    Vmat.setZero();
+
+    const Eigen::Vector3f encoder_fi = Rbo*encoder_velocity;
+    Eigen::Matrix3f R_encoder;
+    R_encoder << 0.f, -encoder_fi(2), encoder_fi(1),
+                 encoder_fi(2), 0.f, -encoder_fi(0),
+                -encoder_fi(1), encoder_fi(0), 0.f;
+
+    F.block<9,9>(0,0) = A;
+    F.block<3,3>(9,3) = -dR_past*dt*R_encoder;
+    F.block<3,3>(9,9) = Eigen::Matrix3f::Identity();
+
+    Vmat.block<9,6>(0,0) = B;
+    Vmat.block<3,3>(9,6) = dR_past*Rbo*dt;
+
+    covariance_enc.block<12,12>(0,0) = F*covariance_enc.block<12,12>(0,0)*F.transpose()+Vmat*Nga_en*Vmat.transpose();
+    covariance_enc.block<9,9>(12,12) += NgaWalk_en;
+}
+
 void Preintegrated::MergePrevious(Preintegrated* pPrev)
 {
     if (pPrev==this)
@@ -254,9 +352,19 @@ void Preintegrated::MergePrevious(Preintegrated* pPrev)
 
     Initialize(bav);
     for(size_t i=0;i<aux1.size();i++)
-        IntegrateNewMeasurement(aux1[i].a,aux1[i].w,aux1[i].t);
+    {
+        if(mbUseWheel)
+            IntegrateNewMeasurement(aux1[i].a,aux1[i].w,aux1[i].t,aux1[i].enc);
+        else
+            IntegrateNewMeasurement(aux1[i].a,aux1[i].w,aux1[i].t);
+    }
     for(size_t i=0;i<aux2.size();i++)
-        IntegrateNewMeasurement(aux2[i].a,aux2[i].w,aux2[i].t);
+    {
+        if(mbUseWheel)
+            IntegrateNewMeasurement(aux2[i].a,aux2[i].w,aux2[i].t,aux2[i].enc);
+        else
+            IntegrateNewMeasurement(aux2[i].a,aux2[i].w,aux2[i].t);
+    }
 
 }
 
@@ -394,6 +502,7 @@ std::ostream& operator<< (std::ostream &out, const Bias &b)
 
 void Calib::Set(const Sophus::SE3<float> &sophTbc, const float &ng, const float &na, const float &ngw, const float &naw) {
     mbIsSet = true;
+    mbUseWheel = false;
     const float ng2 = ng*ng;
     const float na2 = na*na;
     const float ngw2 = ngw*ngw;
@@ -404,11 +513,40 @@ void Calib::Set(const Sophus::SE3<float> &sophTbc, const float &ng, const float 
     mTcb = mTbc.inverse();
     Cov.diagonal() << ng2, ng2, ng2, na2, na2, na2;
     CovWalk.diagonal() << ngw2, ngw2, ngw2, naw2, naw2, naw2;
+    mWheelTbo.setZero();
+    mWheelRbo.setIdentity();
+    Nga_en.setZero();
+    NgaWalk_en.setZero();
+}
+
+void Calib::SetWheel(const bool use, const Eigen::Vector3f &t_imu_wheel, const Eigen::Matrix3f &r_imu_wheel,
+                     const float noise_vel_sigma, const float walk_vel_sigma)
+{
+    mbUseWheel = use;
+    mWheelTbo = t_imu_wheel;
+    mWheelRbo = r_imu_wheel;
+    if(!use)
+    {
+        Nga_en.setZero();
+        NgaWalk_en.setZero();
+        return;
+    }
+    const float nv2 = noise_vel_sigma * noise_vel_sigma;
+    Nga_en.diagonal().head<6>() = Cov.diagonal();
+    Nga_en.diagonal().tail<3>().setConstant(nv2);
+    NgaWalk_en.diagonal().head<6>() = CovWalk.diagonal();
+    const float wv2 = walk_vel_sigma * walk_vel_sigma;
+    NgaWalk_en.diagonal().tail<3>().setConstant(wv2);
 }
 
 Calib::Calib(const Calib &calib)
 {
     mbIsSet = calib.mbIsSet;
+    mbUseWheel = calib.mbUseWheel;
+    mWheelTbo = calib.mWheelTbo;
+    mWheelRbo = calib.mWheelRbo;
+    Nga_en = calib.Nga_en;
+    NgaWalk_en = calib.NgaWalk_en;
     // Sophus/Eigen parameters
     mTbc = calib.mTbc;
     mTcb = calib.mTcb;

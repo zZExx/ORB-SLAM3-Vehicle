@@ -13,6 +13,10 @@ CAM_TOPIC="${8:-/camera/image_raw}"
 IMU_TOPIC="${9:-/imu/data}"
 RATE="${10:-1.0}"
 INPUT_SOURCE="${11:-auto}"
+USE_WHEEL="${12:-false}"
+WHEEL_TOPIC="${13:-/wheel_odom}"
+WHEEL_OFFSET="${14:-0.0}"
+DB_WHEEL_TOPIC="${15:-/wheel_odom}"
 DB_TIMEOUT_SEC=""
 
 VOCAB="$REPO/vocabulary/ORBvoc.txt"
@@ -68,7 +72,10 @@ if [ "$MODE" = "mono-inertial" ]; then
       -p db_bag_path:="$BAG_PATH" \
       -p db_camera_topic:="$CAM_TOPIC" \
       -p db_imu_topic:="$IMU_TOPIC" \
-      -p db_play_rate:="$RATE" &
+      -p db_play_rate:="$RATE" \
+      -p use_wheel:="$USE_WHEEL" \
+      -p wheel_time_offset:="$WHEEL_OFFSET" \
+      -p db_wheel_topic:="$DB_WHEEL_TOPIC" &
   else
     setsid ros2 run orbslam3 mono-inertial "$VOCAB" "$CONFIG_PATH" false "$VIZ" \
       --ros-args \
@@ -76,7 +83,10 @@ if [ "$MODE" = "mono-inertial" ]; then
       -r imu:="$IMU_TOPIC" \
       -p camera_time_offset:="$CAM_OFFSET" \
       -p imu_time_offset:="$IMU_OFFSET" \
-      -p data_source:=subscribe &
+      -p data_source:=subscribe \
+      -p use_wheel:="$USE_WHEEL" \
+      -p wheel_topic:="$WHEEL_TOPIC" \
+      -p wheel_time_offset:="$WHEEL_OFFSET" &
   fi
 elif [ "$MODE" = "mono" ]; then
   if [ "$USE_DB_READER" = "true" ]; then
@@ -102,7 +112,11 @@ SLAM_PGID=$!
 if [ "$USE_DB_READER" = "false" ]; then
   # Ensure subscriptions are ready before starting bag playback.
   sleep 10
-  ros2 bag play "$BAG_PATH" --topics "$CAM_TOPIC" "$IMU_TOPIC" -r "$RATE" &
+  BAG_TOPICS="$CAM_TOPIC $IMU_TOPIC"
+  if [ "$USE_WHEEL" = "true" ]; then
+    BAG_TOPICS="$BAG_TOPICS $WHEEL_TOPIC"
+  fi
+  ros2 bag play "$BAG_PATH" --topics $BAG_TOPICS -r "$RATE" &
   BAG_PID=$!
   wait "$BAG_PID"
 else
