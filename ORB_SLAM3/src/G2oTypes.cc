@@ -19,6 +19,7 @@
 #include "G2oTypes.h"
 #include "ImuTypes.h"
 #include "Converter.h"
+#include <iostream>
 namespace ORB_SLAM3
 {
 
@@ -773,11 +774,17 @@ void EdgeInertialGSE::computeError()
     const Eigen::Vector3d Tbo_d = mpInt->Tbo.cast<double>();
     const Eigen::Vector3d enc_v = mpInt->encoder_velocity.cast<double>();
     const Eigen::Vector3d dpb = VP2->estimate().twb - VP1->estimate().twb;
-    const Eigen::Vector3d inner = s*dpb - Tbo_d + Rbw1*Rwb2*Tbo_d - enc_v;
-    const Eigen::Vector3d ee = Rbw1 * inner;
+    // const Eigen::Vector3d inner = s*dpb - Tbo_d + Rbw1*Rwb2*Tbo_d - enc_v;
+    // const Eigen::Vector3d ee = Rbw1 * inner;
 
+    const Eigen::Vector3d inner2 = Rbw1 * s * dpb - Tbo_d + Rbw1*Rwb2*Tbo_d - enc_v;
+    const Eigen::Vector3d ee2 = inner2;
+
+    // std::cout << "Encoder update error2: " << ee2.transpose() << std::endl;
+
+    // std::cout << "Encoder update error: " << ee.transpose() << std::endl;
     _error.head<9>() << er, ev, ep;
-    _error.tail<3>() = ee;
+    _error.tail<3>() = ee2;
 }
 
 void EdgeInertialGSE::linearizeOplus()

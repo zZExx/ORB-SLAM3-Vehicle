@@ -188,7 +188,6 @@ void LocalMapping::Run()
                         InitializeIMU(1e2, 1e5, true);
                 }
 
-
                 // Check redundant local Keyframes
                 KeyFrameCulling();
 
@@ -1273,9 +1272,35 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
     mInitTime = mpTracker->mLastFrame.mTimeStamp-vpKF.front()->mTimeStamp;
 
     std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
-    Optimizer::InertialOptimization(mpAtlas->GetCurrentMap(), mRwg, mScale, mbg, mba, mbMonocular, infoInertial, false, false, priorG, priorA, mpTracker->UseWheelEncoder());
+    const bool useWheelEncoder = mpTracker->UseWheelEncoder();
+    const double scaleBefore = mScale;
+    const Eigen::Vector3d bgBefore = mbg;
+    const Eigen::Vector3d baBefore = mba;
+    std::cout << "[VIBA] begin"
+              << " use_wheel=" << (useWheelEncoder ? "true" : "false")
+              << " priorG=" << priorG
+              << " priorA=" << priorA
+              << " scale_before=" << scaleBefore
+              << " bg_before=[" << bgBefore.transpose() << "]"
+              << " ba_before=[" << baBefore.transpose() << "]"
+              << " init_time=" << mInitTime
+              << " kfs=" << N
+              << std::endl;
+    Optimizer::InertialOptimization(mpAtlas->GetCurrentMap(), mRwg, mScale, mbg, mba, mbMonocular, infoInertial, false, false, priorG, priorA, useWheelEncoder);
 
     std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> vibaElapsed = t1 - t0;
+    std::cout << "[VIBA] end"
+              << " use_wheel=" << (useWheelEncoder ? "true" : "false")
+              << " priorG=" << priorG
+              << " priorA=" << priorA
+              << " scale_after=" << mScale
+              << " bg_after=[" << mbg.transpose() << "]"
+              << " ba_after=[" << mba.transpose() << "]"
+              << " info_rows=" << infoInertial.rows()
+              << " info_cols=" << infoInertial.cols()
+              << " elapsed_s=" << vibaElapsed.count()
+              << std::endl;
 
     if (mScale<1e-1)
     {
