@@ -111,7 +111,7 @@ SLAM_PGID=$!
 
 if [ "$USE_DB_READER" = "false" ]; then
   # Ensure subscriptions are ready before starting bag playback.
-  sleep 10
+  sleep 30
   BAG_TOPICS="$CAM_TOPIC $IMU_TOPIC"
   if [ "$USE_WHEEL" = "true" ]; then
     BAG_TOPICS="$BAG_TOPICS $WHEEL_TOPIC"

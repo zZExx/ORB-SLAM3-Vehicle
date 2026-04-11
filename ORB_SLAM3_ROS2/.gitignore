@@ -9,9 +9,7 @@ log/
 compile_commands.json
 
 # Experiment outputs (keep directories; ignore generated artifacts)
-experiments/**/run.log
-experiments/**/FrameTrajectory.txt
-experiments/**/KeyFrameTrajectory.txt
+experiments/
 
 # Local IDE settings (often contain machine-specific paths)
 .vscode/

@@ -79,6 +79,8 @@ private:
     mutable std::mutex wheelMutex_;
     std::deque<std::pair<double, double>> wheelBuf_;
     double lastWheelTs_{-1.0};
+    double lastWheelLinearX_{0.0};
+    double lastWheelAlignedX_{0.0};
 
     // Image
     std::queue<ImageMsg::SharedPtr> imgBuf_;
@@ -102,6 +104,7 @@ private:
     std::string dbWheelTopic_{"/wheel_odom"};
     std::string wheelTopic_{"wheel_odom"};
     double dbPlayRate_{1.0};
+    int dbPlayLoops_{1};
     std::atomic<int> activeDataSource_{static_cast<int>(DataSourceMode::SUBSCRIBE)};
     bool localizationOnly_{false};
     bool initMonoLogged_{false};
@@ -113,6 +116,7 @@ private:
     std::atomic<int> droppedOutOfOrderImage_{0};
     std::atomic<int> imageOverwriteCount_{0};
     std::atomic<int> waitingForImuCount_{0};
+    std::atomic<int> wheelSamplesReceived_{0};
     std::atomic<int> totalImagesReceived_{0};
     std::atomic<int> totalImagesProcessed_{0};
 

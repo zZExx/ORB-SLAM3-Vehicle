@@ -6,15 +6,15 @@
 Camera.type: "PinHole"
 
 # Camera calibration and distortion parameters (OpenCV)
-Camera.fx: 194.86237317332402
-Camera.fy: 195.69434495297807
-Camera.cx: 318.2753463845064
-Camera.cy: 249.1298428343669
+Camera.fx: 198.79569458995144
+Camera.fy: 199.83715141025527
+Camera.cx: 318.06273003246656
+Camera.cy: 248.68997777668756
 
-Camera.k1: -0.003651408424042306
-Camera.k2: -0.011459263576695045
-Camera.p1: -0.0003825857312026646
-Camera.p2: 0.0009794677681847158
+Camera.k1: -0.0062654446647447395
+Camera.k2: -0.010769114713592836
+Camera.p1: 0.00040165373323249406
+Camera.p2: -0.0008917189109435404
 
 # Camera resolution
 Camera.width: 640
@@ -31,7 +31,10 @@ Tbc: !!opencv-matrix
    rows: 4
    cols: 4 
    dt: f
-   data: [0.00805913, 0.05066120, 0.99868338, 0.08414861,         -0.99977233, -0.01932417, 0.00904819, -0.00343530,         0.01975712, -0.99852893, 0.05049393, -0.04614790,         0.00000000, 0.00000000, 0.00000000, 1.00000000]
+   data: [0.01110714, 0.05635342, 0.9983491, 0.08087989, 
+         -0.99972891, -0.01980606, 0.01224048, -0.00438856,
+          0.02046316, -0.99821441, 0.05611815, -0.0481265,
+          0.0, 0.0, 0.0, 1.0]
 # IMU noise
 IMU.NoiseGyro: 0.000513977155
 IMU.NoiseAcc: 0.001659131141
@@ -50,13 +53,13 @@ Wheel.T_imu_wheel: !!opencv-matrix
   rows: 3
   cols: 1
   dt: f
-  data: [-0.14, 0.0, -0.08]
+  data: [-0.14, 0.0, -0.07]
 Wheel.R_imu_wheel: !!opencv-matrix
   rows: 3
   cols: 3
   dt: f
   data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-Wheel.NoiseVel: 0.2
+Wheel.NoiseVel: 0.1
 Wheel.WalkVel: 0.0001
 
 # Init-stage gating parameters (consumed by Tracking)
@@ -138,8 +141,10 @@ Tracking.MinInliersReloc: 30
 
 # How long (seconds) the system stays in RECENTLY_LOST before declaring full LOST.
 # Shorter values cause faster reset and re-initialization; default was 5.0s.
-Tracking.TimeRecentlyLost: 8.0
+Tracking.TimeRecentlyLost: 5.0
 
 # If keyframes in the current map are at most N while LOST, force reset / reinitialize.
 # Used in two Tracking paths only (RECENTLY_LOST vs LOST gate at >10 KFs is unchanged).
 Tracking.ResetMinKeyFrames: 5
+
+loopClosing: 1

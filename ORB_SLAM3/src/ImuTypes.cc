@@ -262,7 +262,6 @@ void Preintegrated::IntegrateNewMeasurement(const Eigen::Vector3f &acceleration,
         IntegrateNewMeasurement(acceleration,angVel,dt);
         return;
     }
-
     mvMeasurements.push_back(integrable(acceleration,angVel,dt,encoder_v));
 
     Eigen::Matrix<float,9,9> A;
@@ -315,7 +314,10 @@ void Preintegrated::IntegrateNewMeasurement(const Eigen::Vector3f &acceleration,
     Eigen::Matrix<float,12,9> Vmat;
     Vmat.setZero();
 
-    const Eigen::Vector3f encoder_fi = Rbo*encoder_velocity;
+    // 累积量 -> 当前量
+    // const Eigen::Vector3f encoder_fi = Rbo * encoder_velocity;
+    const Eigen::Vector3f encoder_fi = Rbo * encoder_cast;
+
     Eigen::Matrix3f R_encoder;
     R_encoder << 0.f, -encoder_fi(2), encoder_fi(1),
                  encoder_fi(2), 0.f, -encoder_fi(0),

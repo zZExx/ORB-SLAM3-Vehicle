@@ -3158,7 +3158,7 @@ void Optimizer::InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &sc
                 continue;
             }
             const bool wheelEdge = bUseWheelEncoder && pKFi->mpImuPreintegrated && pKFi->mpImuPreintegrated->mbUseWheel
-                && (std::fabs(pKFi->mpImuPreintegrated->encoder_velocity(0)) > 1e-7f)
+                && (pKFi->mpImuPreintegrated->encoder_velocity.norm() > 1e-7f)
                 && (pKFi->mpImuPreintegrated->covariance_enc.block<12,12>(0,0).norm() > 1e-12f);
             if(wheelEdge)
             {

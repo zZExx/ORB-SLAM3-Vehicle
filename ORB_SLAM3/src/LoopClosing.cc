@@ -171,25 +171,26 @@ void LoopClosing::Run()
 
                         Verbose::PrintMess("*Merge detected", Verbose::VERBOSITY_QUIET);
 
+                        if(mbActiveLC)
+                        {
 #ifdef REGISTER_TIMES
                         std::chrono::steady_clock::time_point time_StartMerge = std::chrono::steady_clock::now();
 
                         nMerges += 1;
 #endif
-                        // TODO UNCOMMENT
-                        if (mpTracker->mSensor==System::IMU_MONOCULAR ||mpTracker->mSensor==System::IMU_STEREO || mpTracker->mSensor==System::IMU_RGBD)
-                            MergeLocal2();
-                        else
-                            MergeLocal();
-
+                            if (mpTracker->mSensor==System::IMU_MONOCULAR ||mpTracker->mSensor==System::IMU_STEREO || mpTracker->mSensor==System::IMU_RGBD)
+                                MergeLocal2();
+                            else
+                                MergeLocal();
+                        
 #ifdef REGISTER_TIMES
                         std::chrono::steady_clock::time_point time_EndMerge = std::chrono::steady_clock::now();
 
                         double timeMergeTotal = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndMerge - time_StartMerge).count();
                         vdMergeTotal_ms.push_back(timeMergeTotal);
 #endif
-
                         Verbose::PrintMess("Merge finished!", Verbose::VERBOSITY_QUIET);
+                        }
                     }
 
                     vdPR_CurrentTime.push_back(mpCurrentKF->mTimeStamp);
@@ -265,14 +266,16 @@ void LoopClosing::Run()
 
                         mvpLoopMapPoints = mvpLoopMPs;
 
+                        if(mbActiveLC)
+                        {
 #ifdef REGISTER_TIMES
                         std::chrono::steady_clock::time_point time_StartLoop = std::chrono::steady_clock::now();
 
                         nLoop += 1;
 
 #endif
-                        CorrectLoop();
-#ifdef REGISTER_TIMES
+                            CorrectLoop();
+ #ifdef REGISTER_TIMES
                         std::chrono::steady_clock::time_point time_EndLoop = std::chrono::steady_clock::now();
 
                         double timeLoopTotal = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndLoop - time_StartLoop).count();
@@ -280,6 +283,7 @@ void LoopClosing::Run()
 #endif
 
                         mnNumCorrection += 1;
+                        }
                     }
 
                     // Reset all variables
@@ -323,10 +327,6 @@ bool LoopClosing::CheckNewKeyFrames()
 
 bool LoopClosing::NewDetectCommonRegions()
 {
-    // To deactivate placerecognition. No loopclosing nor merging will be performed
-    if(!mbActiveLC)
-        return false;
-
     {
         unique_lock<mutex> lock(mMutexLoopQueue);
         mpCurrentKF = mlpLoopKeyFrameQueue.front();
