@@ -721,7 +721,7 @@ void Tracking::newParameterLoader(Settings *settings) {
 
     const float sf = sqrt(mImuFreq);
     mpImuCalib = new IMU::Calib(Tbc,Ng*sf,Na*sf,Ngw/sf,Naw/sf);
-    if(mbApplyWheelFromYaml && settings->wheelUse())
+    if(mbApplyWheelFromYaml)
     {
         const float sigV = settings->wheelNoiseVel() * sf;
         const float sigW = settings->wheelWalkVel() / sf;
@@ -1533,8 +1533,7 @@ bool Tracking::ParseIMUParamFile(cv::FileStorage &fSettings)
 
     mpImuCalib = new IMU::Calib(Tbc,Ng*sf,Na*sf,Ngw/sf,Naw/sf);
 
-    cv::FileNode nWheel = fSettings["Wheel.use"];
-    if(mbApplyWheelFromYaml && !nWheel.empty() && static_cast<int>(fSettings["Wheel.use"]) != 0)
+    if(mbApplyWheelFromYaml)
     {
         Eigen::Vector3f tbo(0.f,0.f,0.f);
         Eigen::Matrix3f Rbo = Eigen::Matrix3f::Identity();
