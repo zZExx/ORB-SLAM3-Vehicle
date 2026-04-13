@@ -315,8 +315,8 @@ void Preintegrated::IntegrateNewMeasurement(const Eigen::Vector3f &acceleration,
     Vmat.setZero();
 
     // 累积量 -> 当前量
-    // const Eigen::Vector3f encoder_fi = Rbo * encoder_velocity;
-    const Eigen::Vector3f encoder_fi = Rbo * encoder_cast;
+    const Eigen::Vector3f encoder_fi = Rbo * encoder_velocity;
+    // const Eigen::Vector3f encoder_fi = Rbo * encoder_cast;
 
     Eigen::Matrix3f R_encoder;
     R_encoder << 0.f, -encoder_fi(2), encoder_fi(1),

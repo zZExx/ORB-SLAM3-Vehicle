@@ -12,12 +12,13 @@
 #include <chrono>
 #include <algorithm>
 #include <deque>
+#include <sstream>
+#include <string>
 
 using std::placeholders::_1;
 
-MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM, const std::string &strDoEqual) :
-    Node("ORB_SLAM3_ROS2"),
-    SLAM_(pSLAM)
+MonoInertialNode::MonoInertialNode(const std::string &vocPath, const std::string &settingsPath, const std::string &strDoEqual, bool useViewer) :
+    Node("ORB_SLAM3_ROS2")
 {
     std::stringstream ss_eq(strDoEqual);
     ss_eq >> std::boolalpha >> doEqual_;
@@ -51,6 +52,9 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System* pSLAM, const std::string &
     std::cout << "Equal: " << doEqual_ << std::endl;
     std::cout << "Time offset: camera=" << cameraTimeOffset_ << " imu=" << imuTimeOffset_ << " wheel=" << wheelTimeOffset_ << std::endl;
     std::cout << "use_wheel: " << (useWheel_ ? "true" : "false") << " wheel_topic: " << wheelTopic_ << std::endl;
+
+    SLAM_ = new ORB_SLAM3::System(vocPath, settingsPath, ORB_SLAM3::System::IMU_MONOCULAR, useViewer, 0, std::string(), useWheel_);
+    std::cout << "SLAM wheel fusion (YAML Wheel.* applied in core): " << (useWheel_ ? "true" : "false") << std::endl;
 
     if (dataSource_ == "db")
     {
@@ -140,11 +144,14 @@ MonoInertialNode::~MonoInertialNode()
         syncThread_ = nullptr;
     }
 
-    // Save trajectory before Shutdown so we get KeyFrameTrajectory.txt even if Shutdown() segfaults later
-    SLAM_->SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
-    SLAM_->SaveTrajectoryEuRoC("FrameTrajectory.txt");
-    // Atlas is saved inside Shutdown() after LocalMapping/LoopClosing threads have stopped
-    SLAM_->Shutdown();
+    if (SLAM_ != nullptr)
+    {
+        SLAM_->SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
+        SLAM_->SaveTrajectoryEuRoC("FrameTrajectory.txt");
+        SLAM_->Shutdown();
+        delete SLAM_;
+        SLAM_ = nullptr;
+    }
 }
 
 void MonoInertialNode::GrabImu(const ImuMsg::SharedPtr msg)

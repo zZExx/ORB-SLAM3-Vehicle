@@ -6,8 +6,6 @@
 #include "rclcpp/rclcpp.hpp"
 #include "mono-inertial-node.hpp"
 
-#include "System.h"
-
 int main(int argc, char **argv)
 {
     if (argc < 3)
@@ -29,9 +27,8 @@ int main(int argc, char **argv)
     }
 
     rclcpp::init(argc, argv);
-    ORB_SLAM3::System pSLAM(argv[1], argv[2], ORB_SLAM3::System::IMU_MONOCULAR, visualization);
 
-    auto node = std::make_shared<MonoInertialNode>(&pSLAM, doEqual);
+    auto node = std::make_shared<MonoInertialNode>(argv[1], argv[2], doEqual, visualization);
     std::cout << "============================" << std::endl;
 
     rclcpp::spin(node);

@@ -88,6 +88,72 @@ e_tail = Rbw1 * s * (twb2 - twb1) - Tbo + Rbw1*Rwb2*Tbo - encoder_velocity
 
 `EdgeInertialGSE` 构造里：优先用 `covariance_enc` 的 12×12 子块求逆；若该块接近奇异，则回退为 IMU 的 `C` 的 9×9 逆，并对最后 3×3 使用**较大对角**（见 `G2oTypes.cc`）。这是启发式，若 `cov12` 经常退化，尾部权重可能不合理。
 
+### 6）单目尺度 `s` 与杠杆臂 `Tbo` 的度量约定
+
+尾部残差对平移项使用 **`s * (twb2 - twb1)`**，而 **`Tbo`（`Wheel.T_imu_wheel`）通常按米制外参**写入。若地图中 `twb` 与 YAML 外参不在同一尺度约定下，会出现**量纲混用**：优化可能用错误的 `s` 或扭曲轨迹去拟合轮速。
+
+**建议：** 在文档/配置里写死「`twb` 与 `Tbo` 是否同尺度」；单目初始化后确认尺度与标定一致再做 wheel A/B。
+
+### 7）历史 commit `4da7b15`（`add-wheel`）审阅记录（对照用）
+
+若对比该 commit 的 `G2oTypes.cc`（而非当前树），曾出现：
+
+- **`computeError` 尾部**：`inner = s*dpb - Tbo + Rbw1*Rwb2*Tbo - enc`，再 **`ee = Rbw1 * inner`**，会把**已在 b1 系累加的 `encoder_velocity` 再左乘 `Rbw1`**，且 `inner` 内世界量与体轴量混写，与预积分语义易冲突。
+- **`linearizeOplus` 尺度块**：`_jacobianOplus[7].block<3,1>(9,0) = Rbw1*Δtwb * s`，对 **`Rbw1 * s * Δtwb`** 关于 `s` 的常见偏导应为 **`Rbw1 * Δtwb`**，多出的 `*s` 疑似笔误。
+
+当前主干若已改为 **`ee2 = Rbw1*s*dpb - Tbo + Rbw1*Rwb2*Tbo - enc`** 并修正尺度雅可比，上述两点应已缓解；合并分支时仍建议 **diff 核对**。
+
+### 8）扩维噪声 `Nga_en` 与「只有 x 向线速度」
+
+`Calib::SetWheel` 将 `Nga_en` 尾部 3 维对角设为同一 `NoiseVel^2`，但 ROS 侧通常只填 **`twist.linear.x`**。相当于在传播里为 y/z 维也加了噪声通道，**与真实 1 自由度观测不完全同构**；若 y/z 对角过大或过小，都会影响 `covariance_enc` 与尾部信息矩阵。
+
+**建议：** 明确是否将 y/z 噪声压到极小（近似只约束 x），或改为严格 1 维观测模型。
+
+### 9）ROS2：时间对齐、轴向与符号
+
+- **`wheel_time_offset`**：与 IMU 不同步时，会把速度插到错误子区间。
+- **`linear.x` 与 `Wheel.R_imu_wheel`**：车体前进方向、IMU 安装、右手系与 ORB 体轴定义必须一致；符号反了会系统性拉偏尺度与轨迹。
+
+### 10）`covariance_enc`（21×21）与 `C`（9×9）
+
+- 12×12 传播沿**预积分轨迹**线性化，与 **g2o 在当前顶点处**的线性化点未必一致，属常见近似。
+- 下方块与 `NgaWalk_en` 的用法、**初始化是否处处清零**、是否与 IMU 协方差**重复或遗漏**交叉项，建议全局 `grep covariance_enc` 做一次审阅。
+
+### 11）优化图：鲁棒核与 `EdgeInertialGS` ↔ `EdgeInertialGSE` 切换
+
+- 若 `EdgeInertialGS` 与 `EdgeInertialGSE` 在鲁棒核、权重上不一致，Chi2 贡献不可比。
+- 仅靠 **`encoder_velocity.norm()`** 等门限在两类边之间切换，边界附近可能出现**约束形式跳变**。
+
+### 12）序列化与 Atlas
+
+`Preintegrated` 增加 `mbUseWheel`、`encoder_velocity`、`covariance_enc` 等序列化字段后，**旧版保存的 atlas/地图与新版不兼容**。需保留 **wheel 关闭** 的基线地图或版本说明。
+
+### 13）其它工程点
+
+- **`EdgeInertialGSE::computeError` 内 `std::cout`**：若仍存在，会严重拖慢优化；应删除或 `#ifdef`。
+- **轮速缺失段**：若 `encoder_v` 被置 0 重积分，与建图当时使用的预积分可能不一致；**bias 更新后 `Reintegrate`** 会重播 `enc`，需保证队列与 YAML 开关一致。
+- **CMake 生成物误提交**：与算法无关，但说明该历史 commit 审查疏漏，合并时注意 `.gitignore`。
+
+---
+
+## 问题汇总（检查清单）
+
+| 序号 | 主题 | 建议动作 |
+|------|------|----------|
+| 1 | 预积分量 vs 尾部几何残差 | 统一模型后改协方差与雅可比 |
+| 2 | Optimizer 范数门限 | 静止/短区间是否需要 wheel 边 |
+| 3 | 尾部解析雅可比 | 数值差分校验 `e_tail` 对各顶点 |
+| 4 | 回环 vs 冻结预积分 | 重积分或短期内禁用 wheel 边 |
+| 5 | 信息矩阵退化回退 | 监控 `cov12` 是否常退化 |
+| 6 | `s` 与 `Tbo` 尺度 | 文档化约定并做 A/B |
+| 7 | 历史 commit 残差/尺度雅可比 | 合并时 diff `G2oTypes.cc` |
+| 8 | 3 维噪声 vs 1 维观测 | 调对角或改 1 维模型 |
+| 9 | 时间戳/轴向/符号 | bag 标定与实车核对 |
+| 10 | `covariance_enc` 全链路 | `grep` + 初始化审阅 |
+| 11 | 鲁棒核与边切换 | 与纯 IMU 边对齐策略 |
+| 12 | Atlas 兼容 | 版本说明 + 基线地图 |
+| 13 | 日志/缺失数据/Reintegrate | 关调试输出、保证数据一致 |
+
 ---
 
 ## 建议的工程顺序

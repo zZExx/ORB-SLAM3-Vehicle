@@ -42,7 +42,7 @@ namespace ORB_SLAM3
 {
 
 
-Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, const string &_nameSeq):
+Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, const string &_nameSeq, const bool bApplyWheelFromYaml):
     mState(NO_IMAGES_YET), mSensor(sensor), mTrackedFr(0), mbStep(false),
     mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
     mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
@@ -54,7 +54,7 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     mKeyFrameTimeThresholdNoImuInit(0.25), mKeyFrameTimeThresholdImuInit(0.5), mImuInitMaxTime(10.0f), mImuInitMinMotion(0.02f),
     mMonoInitTimeoutSec(3.0f), mMonoInitMinRotDeg(3.0f), mMonoInitMaxRotDeg(15.0f), mMonoInitMinDtSec(0.25f),
     mnTrackLocalMapMinInliersNoImu(20), mnTrackLocalMapMinInliersReloc(30), mnMonoInitMinTrackedMapPoints(30),
-    mnResetMinKeyFrames(10)
+    mnResetMinKeyFrames(10), mbApplyWheelFromYaml(bApplyWheelFromYaml)
 {
     // Load camera parameters from settings file
     if(settings){
@@ -721,7 +721,7 @@ void Tracking::newParameterLoader(Settings *settings) {
 
     const float sf = sqrt(mImuFreq);
     mpImuCalib = new IMU::Calib(Tbc,Ng*sf,Na*sf,Ngw/sf,Naw/sf);
-    if(settings->wheelUse())
+    if(mbApplyWheelFromYaml && settings->wheelUse())
     {
         const float sigV = settings->wheelNoiseVel() * sf;
         const float sigW = settings->wheelWalkVel() / sf;
@@ -1534,7 +1534,7 @@ bool Tracking::ParseIMUParamFile(cv::FileStorage &fSettings)
     mpImuCalib = new IMU::Calib(Tbc,Ng*sf,Na*sf,Ngw/sf,Naw/sf);
 
     cv::FileNode nWheel = fSettings["Wheel.use"];
-    if(!nWheel.empty() && static_cast<int>(fSettings["Wheel.use"]) != 0)
+    if(mbApplyWheelFromYaml && !nWheel.empty() && static_cast<int>(fSettings["Wheel.use"]) != 0)
     {
         Eigen::Vector3f tbo(0.f,0.f,0.f);
         Eigen::Matrix3f Rbo = Eigen::Matrix3f::Identity();

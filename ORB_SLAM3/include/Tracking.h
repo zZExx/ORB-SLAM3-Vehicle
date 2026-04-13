@@ -60,7 +60,8 @@ class Tracking
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Tracking(System* pSys, ORBVocabulary* pVoc, FrameDrawer* pFrameDrawer, MapDrawer* pMapDrawer, Atlas* pAtlas,
-             KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, const string &_nameSeq=std::string());
+             KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, const string &_nameSeq=std::string(),
+             const bool bApplyWheelFromYaml = true);
 
     ~Tracking();
 
@@ -390,6 +391,9 @@ protected:
     int   mnTrackLocalMapMinInliersReloc;// inlier threshold right after relocalization (default 30)
     int   mnMonoInitMinTrackedMapPoints; // min tracked points after CreateInitialMapMonocular (default 30)
     int   mnResetMinKeyFrames;           // LOST: reset map if KeyFramesInMap() <= N (two paths; default 10)
+
+    /** When false, do not call IMU::Calib::SetWheel from YAML/Settings (wheel fusion off in core). */
+    bool mbApplyWheelFromYaml;
 
     Sophus::SE3f mTlr;
 

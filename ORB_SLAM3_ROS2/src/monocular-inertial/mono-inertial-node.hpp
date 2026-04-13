@@ -21,6 +21,7 @@
 #include <atomic>
 #include <cmath>
 #include <deque>
+#include <string>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -34,7 +35,8 @@ using OdomMsg = nav_msgs::msg::Odometry;
 class MonoInertialNode : public rclcpp::Node
 {
 public:
-    MonoInertialNode(ORB_SLAM3::System* pSLAM, const std::string &strDoEqual);
+    /** Creates SLAM internally after reading ROS params (so `use_wheel` gates YAML wheel before System loads). */
+    MonoInertialNode(const std::string &vocPath, const std::string &settingsPath, const std::string &strDoEqual, bool useViewer);
     ~MonoInertialNode();
 
 private:
@@ -65,7 +67,7 @@ private:
 
     SlamPublishers pubs_;
 
-    ORB_SLAM3::System *SLAM_;
+    ORB_SLAM3::System *SLAM_{nullptr};
     std::thread *syncThread_{nullptr};
     std::thread *dbThread_{nullptr};
     std::atomic<bool> stopDbThread_{false};

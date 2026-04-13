@@ -780,8 +780,8 @@ void EdgeInertialGSE::computeError()
     const Eigen::Vector3d inner2 = Rbw1 * s * dpb - Tbo_d + Rbw1*Rwb2*Tbo_d - enc_v;
     const Eigen::Vector3d ee2 = inner2;
 
-    // std::cout << "Encoder update error2: " << ee2.transpose() << std::endl;
-    // std::cout << "enc_v: " << enc_v.norm() << std::endl;
+    std::cout << "Encoder update error2: " << ee2.transpose() << std::endl;
+    std::cout << "enc_v: " << enc_v.norm() << std::endl;
     // std::cout << "Encoder update error: " << ee.transpose() << std::endl;
     _error.head<9>() << er, ev, ep;
     _error.tail<3>() = ee2;
@@ -858,7 +858,7 @@ void EdgeInertialGSE::linearizeOplus()
     _jacobianOplus[7].setZero();
     _jacobianOplus[7].block<3,1>(3,0) = Rbw1*(VV2->estimate()-VV1->estimate());
     _jacobianOplus[7].block<3,1>(6,0) = Rbw1*(VP2->estimate().twb-VP1->estimate().twb-VV1->estimate()*dt);
-    // _jacobianOplus[7].block<3,1>(9,0) = Rbw1*(VP2->estimate().twb-VP1->estimate().twb) * s;
+    //  _jacobianOplus[7].block<3,1>(9,0) = Rbw1*(VP2->estimate().twb-VP1->estimate().twb) * s;
     _jacobianOplus[7].block<3,1>(9,0) = Rbw1*(VP2->estimate().twb-VP1->estimate().twb);
 
     // _jacobianOplus[7].setZero();

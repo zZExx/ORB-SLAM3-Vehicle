@@ -38,25 +38,24 @@ IMU.NoiseAcc: 0.001659131141
 IMU.GyroWalk: 0.0006240939
 IMU.AccWalk: 0.000147278489
 IMU.Frequency: 200
-
 #--------------------------------------------------------------------------------------------
 # Optional wheel (nav_msgs/Odometry twist.linear.x in m/s). ROS2: set use_wheel:=true and
 # wheel_topic / wheel_time_offset. Enable optimization path with Wheel.use: 1 below.
 # T_imu_wheel: 3x1 translation (m), R_imu_wheel: 3x3 rotation IMU <- wheel frame.
 # NoiseVel / WalkVel: std-dev per sqrt(Hz), scaled like IMU noise in Tracking.
 #--------------------------------------------------------------------------------------------
-Wheel.use: 1
+Wheel.use: 0
 Wheel.T_imu_wheel: !!opencv-matrix
   rows: 3
   cols: 1
   dt: f
-  data: [-0.14, 0.0, -0.08]
+  data: [-0.14, 0.0, -0.07]
 Wheel.R_imu_wheel: !!opencv-matrix
   rows: 3
   cols: 3
   dt: f
   data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-Wheel.NoiseVel: 0.2
+Wheel.NoiseVel: 0.1
 Wheel.WalkVel: 0.0001
 
 # Init-stage gating parameters (consumed by Tracking)
@@ -138,8 +137,10 @@ Tracking.MinInliersReloc: 30
 
 # How long (seconds) the system stays in RECENTLY_LOST before declaring full LOST.
 # Shorter values cause faster reset and re-initialization; default was 5.0s.
-Tracking.TimeRecentlyLost: 8.0
+Tracking.TimeRecentlyLost: 5.0
 
 # If keyframes in the current map are at most N while LOST, force reset / reinitialize.
 # Used in two Tracking paths only (RECENTLY_LOST vs LOST gate at >10 KFs is unchanged).
 Tracking.ResetMinKeyFrames: 5
+
+loopClosing: 1
