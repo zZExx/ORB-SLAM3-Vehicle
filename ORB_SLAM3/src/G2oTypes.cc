@@ -22,6 +22,120 @@
 #include <iostream>
 namespace ORB_SLAM3
 {
+namespace
+{
+// P0 Scheme A contract -- MUST stay aligned with the preintegration
+// accumulator in Preintegrated::IntegrateNewMeasurement(.., encoder_v).
+//
+//   enc_v ~= R_b1_w * (t_wo2 - t_wo1)
+//   t_wo_k = t_wb_k + R_wb_k * Tbo              (wheel-origin in world)
+//
+// Expanding and applying monocular scale s only to the visual displacement
+// dpb = twb2 - twb1 (Tbo is a calibrated lever arm and must not be scaled):
+//
+//   residual = (predicted) - (measured)
+//            = Rbw1 * (s * dpb + Rwb2 * Tbo) - Tbo - enc_v
+//
+// The analytic Jacobians used in EdgeInertialGSE::linearizeOplus are
+// derived from this exact form. If this function is ever changed, the
+// tail blocks [9:12, *] of _jacobianOplus[0/2/4/7] MUST be rederived.
+Eigen::Vector3d ComputeWheelTailResidual(const Eigen::Matrix3d &Rwb1,
+                                         const Eigen::Vector3d &twb1,
+                                         const Eigen::Matrix3d &Rwb2,
+                                         const Eigen::Vector3d &twb2,
+                                         const double s,
+                                         const Eigen::Vector3d &Tbo_d,
+                                         const Eigen::Vector3d &enc_v)
+{
+    const Eigen::Matrix3d Rbw1 = Rwb1.transpose();
+    const Eigen::Vector3d dpb = twb2 - twb1;
+    return Rbw1 * (s * dpb + Rwb2 * Tbo_d) - Tbo_d - enc_v;
+}
+
+#ifdef ORB_SLAM3_WHEEL_TAIL_JAC_CHECK
+void CheckWheelTailTranslationScaleJacobians(const Eigen::Matrix3d &Rwb1,
+                                             const Eigen::Vector3d &twb1,
+                                             const Eigen::Matrix3d &Rwb2,
+                                             const Eigen::Vector3d &twb2,
+                                             const double s,
+                                             const Eigen::Vector3d &Tbo_d,
+                                             const Eigen::Vector3d &enc_v,
+                                             const Eigen::Matrix3d &J_phi1,
+                                             const Eigen::Matrix3d &J_phi2,
+                                             const Eigen::Matrix3d &J_t1_local,
+                                             const Eigen::Matrix3d &J_t2_local,
+                                             const Eigen::Vector3d &J_s)
+{
+    const double eps = 1e-7;
+    Eigen::Matrix3d J_phi1_num = Eigen::Matrix3d::Zero();
+    Eigen::Matrix3d J_phi2_num = Eigen::Matrix3d::Zero();
+    Eigen::Matrix3d J_t1_num = Eigen::Matrix3d::Zero();
+    Eigen::Matrix3d J_t2_num = Eigen::Matrix3d::Zero();
+    Eigen::Vector3d J_s_num = Eigen::Vector3d::Zero();
+    const Eigen::Vector3d base = ComputeWheelTailResidual(Rwb1, twb1, Rwb2, twb2, s, Tbo_d, enc_v);
+
+    for(int k = 0; k < 3; ++k)
+    {
+        const Eigen::Vector3d local_step = Eigen::Vector3d::Unit(k) * eps;
+
+        // Rotation right-perturbation: Rwb_new = Rwb * exp(eps*e_k)
+        const Eigen::Matrix3d Rwb1_plus  = Rwb1 * Sophus::SO3d::exp( local_step).matrix();
+        const Eigen::Matrix3d Rwb1_minus = Rwb1 * Sophus::SO3d::exp(-local_step).matrix();
+        const Eigen::Vector3d e_phi1_plus  = ComputeWheelTailResidual(Rwb1_plus,  twb1, Rwb2, twb2, s, Tbo_d, enc_v);
+        const Eigen::Vector3d e_phi1_minus = ComputeWheelTailResidual(Rwb1_minus, twb1, Rwb2, twb2, s, Tbo_d, enc_v);
+        J_phi1_num.col(k) = (e_phi1_plus - e_phi1_minus) / (2.0 * eps);
+
+        const Eigen::Matrix3d Rwb2_plus  = Rwb2 * Sophus::SO3d::exp( local_step).matrix();
+        const Eigen::Matrix3d Rwb2_minus = Rwb2 * Sophus::SO3d::exp(-local_step).matrix();
+        const Eigen::Vector3d e_phi2_plus  = ComputeWheelTailResidual(Rwb1, twb1, Rwb2_plus,  twb2, s, Tbo_d, enc_v);
+        const Eigen::Vector3d e_phi2_minus = ComputeWheelTailResidual(Rwb1, twb1, Rwb2_minus, twb2, s, Tbo_d, enc_v);
+        J_phi2_num.col(k) = (e_phi2_plus - e_phi2_minus) / (2.0 * eps);
+
+        // Translation local-perturbation: twb_new = twb + Rwb * eps*e_k
+        const Eigen::Vector3d twb1_plus  = twb1 + Rwb1 * local_step;
+        const Eigen::Vector3d twb1_minus = twb1 - Rwb1 * local_step;
+        const Eigen::Vector3d e_t1_plus  = ComputeWheelTailResidual(Rwb1, twb1_plus,  Rwb2, twb2, s, Tbo_d, enc_v);
+        const Eigen::Vector3d e_t1_minus = ComputeWheelTailResidual(Rwb1, twb1_minus, Rwb2, twb2, s, Tbo_d, enc_v);
+        J_t1_num.col(k) = (e_t1_plus - e_t1_minus) / (2.0 * eps);
+
+        const Eigen::Vector3d twb2_plus  = twb2 + Rwb2 * local_step;
+        const Eigen::Vector3d twb2_minus = twb2 - Rwb2 * local_step;
+        const Eigen::Vector3d e_t2_plus  = ComputeWheelTailResidual(Rwb1, twb1, Rwb2, twb2_plus,  s, Tbo_d, enc_v);
+        const Eigen::Vector3d e_t2_minus = ComputeWheelTailResidual(Rwb1, twb1, Rwb2, twb2_minus, s, Tbo_d, enc_v);
+        J_t2_num.col(k) = (e_t2_plus - e_t2_minus) / (2.0 * eps);
+    }
+
+    const Eigen::Vector3d e_s_plus  = ComputeWheelTailResidual(Rwb1, twb1, Rwb2, twb2, s + eps, Tbo_d, enc_v);
+    const Eigen::Vector3d e_s_minus = ComputeWheelTailResidual(Rwb1, twb1, Rwb2, twb2, s - eps, Tbo_d, enc_v);
+    J_s_num = (e_s_plus - e_s_minus) / (2.0 * eps);
+
+    const double err_phi1 = (J_phi1 - J_phi1_num).norm();
+    const double err_phi2 = (J_phi2 - J_phi2_num).norm();
+    const double err_t1   = (J_t1_local - J_t1_num).norm();
+    const double err_t2   = (J_t2_local - J_t2_num).norm();
+    const double err_s    = (J_s - J_s_num).norm();
+    const double err_base = base.norm();
+
+    if(err_phi1 > 1e-4 || err_phi2 > 1e-4 || err_t1 > 1e-4 || err_t2 > 1e-4 || err_s > 1e-4)
+    {
+        const double dpb_norm = (twb2 - twb1).norm();
+        const double enc_norm = enc_v.norm();
+        std::cout << "[WheelJacCheck] tail jac mismatch"
+                  << " err_phi1=" << err_phi1
+                  << " err_phi2=" << err_phi2
+                  << " err_t1=" << err_t1
+                  << " err_t2=" << err_t2
+                  << " err_s=" << err_s
+                  << " tail_norm=" << err_base
+                  << " s=" << s
+                  << " dpb_norm=" << dpb_norm
+                  << " enc_norm=" << enc_norm
+                  << std::endl;
+    }
+}
+#endif
+} // namespace
+
 
 ImuCamPose::ImuCamPose(KeyFrame *pKF):its(0)
 {
@@ -768,23 +882,17 @@ void EdgeInertialGSE::computeError()
     const Eigen::Vector3d ev = VP1->estimate().Rwb.transpose()*(s*(VV2->estimate() - VV1->estimate()) - g*dt) - dV;
     const Eigen::Vector3d ep = VP1->estimate().Rwb.transpose()*(s*(VP2->estimate().twb - VP1->estimate().twb - VV1->estimate()*dt) - g*dt*dt/2) - dP;
 
+    // Tail residual: must stay aligned with ComputeWheelTailResidual
+    // (see P0 Scheme A contract above that function).
     const Eigen::Matrix3d Rwb1 = VP1->estimate().Rwb;
-    const Eigen::Matrix3d Rbw1 = Rwb1.transpose();
     const Eigen::Matrix3d Rwb2 = VP2->estimate().Rwb;
     const Eigen::Vector3d Tbo_d = mpInt->Tbo.cast<double>();
     const Eigen::Vector3d enc_v = mpInt->encoder_velocity.cast<double>();
-    const Eigen::Vector3d dpb = VP2->estimate().twb - VP1->estimate().twb;
-    // const Eigen::Vector3d inner = s*dpb - Tbo_d + Rbw1*Rwb2*Tbo_d - enc_v;
-    // const Eigen::Vector3d ee = Rbw1 * inner;
+    const Eigen::Vector3d ee_tail = ComputeWheelTailResidual(
+        Rwb1, VP1->estimate().twb, Rwb2, VP2->estimate().twb, s, Tbo_d, enc_v);
 
-    const Eigen::Vector3d inner2 = Rbw1 * s * dpb - Tbo_d + Rbw1*Rwb2*Tbo_d - enc_v;
-    const Eigen::Vector3d ee2 = inner2;
-
-    std::cout << "Encoder update error2: " << ee2.transpose() << std::endl;
-    std::cout << "enc_v: " << enc_v.norm() << std::endl;
-    // std::cout << "Encoder update error: " << ee.transpose() << std::endl;
     _error.head<9>() << er, ev, ep;
-    _error.tail<3>() = ee2;
+    _error.tail<3>() = ee_tail;
 }
 
 void EdgeInertialGSE::linearizeOplus()
@@ -820,13 +928,30 @@ void EdgeInertialGSE::linearizeOplus()
 
     const Eigen::Vector3d Tbo_d = mpInt->Tbo.cast<double>();
 
+    // ------------------------------------------------------------------
+    // P0 Scheme A: tail residual  e_tail (rows 9:12)
+    //   e_tail = Rbw1 * (s*dpb + Rwb2*Tbo) - Tbo - enc_v,  dpb = twb2-twb1
+    //
+    // Right perturbation on Rwb_k (Rwb -> Rwb*exp(dphi_k)) and body-frame
+    // right perturbation on twb_k (twb -> twb + Rwb*dt_k):
+    //
+    //   d(e_tail)/d(dphi1) =  hat( Rbw1 * (s*dpb + Rwb2*Tbo) )
+    //   d(e_tail)/d(dt1)   = -s * I
+    //   d(e_tail)/d(dphi2) = -Rbw1 * Rwb2 * hat(Tbo)
+    //   d(e_tail)/d(dt2)   =  s * Rbw1 * Rwb2
+    //   d(e_tail)/d(s)     =  Rbw1 * dpb
+    //   d(e_tail)/d(bg)    = -Jencg           (enc_v depends on bg via dR)
+    //   d(e_tail)/d(bias_a, V1, V2, gdir) = 0 (not wired below)
+    // ------------------------------------------------------------------
+    const Eigen::Vector3d dpb = VP2->estimate().twb - VP1->estimate().twb;
+
     _jacobianOplus[0].setZero();
     _jacobianOplus[0].block<3,3>(0,0) = -invJr*Rwb2.transpose()*Rwb1;
     _jacobianOplus[0].block<3,3>(3,0) = Sophus::SO3d::hat(Rbw1*(s*(VV2->estimate() - VV1->estimate()) - g*dt));
-    _jacobianOplus[0].block<3,3>(6,0) = Sophus::SO3d::hat(Rbw1*(s*(VP2->estimate().twb - VP1->estimate().twb
-                                                   - VV1->estimate()*dt) - 0.5*g*dt*dt));
+    _jacobianOplus[0].block<3,3>(6,0) = Sophus::SO3d::hat(Rbw1*(s*(dpb - VV1->estimate()*dt) - 0.5*g*dt*dt));
     _jacobianOplus[0].block<3,3>(6,3) = Eigen::DiagonalMatrix<double,3>(-s,-s,-s);
-    _jacobianOplus[0].block<3,3>(9,0) = Sophus::SO3d::hat(Rbw1*((s*(VP2->estimate().twb - VP1->estimate().twb))+Rwb2*Tbo_d));
+    // tail: d(e_tail)/d(dphi1) and d(e_tail)/d(dt1)
+    _jacobianOplus[0].block<3,3>(9,0) = Sophus::SO3d::hat(Rbw1*(s*dpb + Rwb2*Tbo_d));
     _jacobianOplus[0].block<3,3>(9,3) = Eigen::DiagonalMatrix<double,3>(-s,-s,-s);
 
     _jacobianOplus[1].setZero();
@@ -837,6 +962,8 @@ void EdgeInertialGSE::linearizeOplus()
     _jacobianOplus[2].block<3,3>(0,0) = -invJr*eR.transpose()*RightJacobianSO3(JRg*dbg)*JRg;
     _jacobianOplus[2].block<3,3>(3,0) = -JVg;
     _jacobianOplus[2].block<3,3>(6,0) = -JPg;
+    // tail: d(e_tail)/d(bg) = -d(enc_v)/d(bg) = -Jencg
+    _jacobianOplus[2].block<3,3>(9,0) = -mpInt->Jencg.cast<double>();
 
     _jacobianOplus[3].setZero();
     _jacobianOplus[3].block<3,3>(3,0) = -JVa;
@@ -845,7 +972,8 @@ void EdgeInertialGSE::linearizeOplus()
     _jacobianOplus[4].setZero();
     _jacobianOplus[4].block<3,3>(0,0) = invJr;
     _jacobianOplus[4].block<3,3>(6,3) = s*Rbw1*Rwb2;
-    _jacobianOplus[4].block<3,3>(9,0)= -VP1->estimate().Rwb.transpose()*VP2->estimate().Rwb*Sophus::SO3d::hat(Tbo_d);
+    // tail: d(e_tail)/d(dphi2) and d(e_tail)/d(dt2)
+    _jacobianOplus[4].block<3,3>(9,0) = -Rbw1*Rwb2*Sophus::SO3d::hat(Tbo_d);
     _jacobianOplus[4].block<3,3>(9,3) = s*Rbw1*Rwb2;
 
     _jacobianOplus[5].setZero();
@@ -857,15 +985,25 @@ void EdgeInertialGSE::linearizeOplus()
 
     _jacobianOplus[7].setZero();
     _jacobianOplus[7].block<3,1>(3,0) = Rbw1*(VV2->estimate()-VV1->estimate());
-    _jacobianOplus[7].block<3,1>(6,0) = Rbw1*(VP2->estimate().twb-VP1->estimate().twb-VV1->estimate()*dt);
-    //  _jacobianOplus[7].block<3,1>(9,0) = Rbw1*(VP2->estimate().twb-VP1->estimate().twb) * s;
-    _jacobianOplus[7].block<3,1>(9,0) = Rbw1*(VP2->estimate().twb-VP1->estimate().twb);
+    _jacobianOplus[7].block<3,1>(6,0) = Rbw1*(dpb-VV1->estimate()*dt);
+    // tail: d(e_tail)/d(s) = Rbw1 * dpb
+    _jacobianOplus[7].block<3,1>(9,0) = Rbw1*dpb;
 
-    // _jacobianOplus[7].setZero();
-    // _jacobianOplus[7].block<3,1>(3,0) = Rbw1*(VV2->estimate()-VV1->estimate()) * s;
-    // _jacobianOplus[7].block<3,1>(6,0) = Rbw1*(VP2->estimate().twb-VP1->estimate().twb-VV1->estimate()*dt) * s;
-
-
+#ifdef ORB_SLAM3_WHEEL_TAIL_JAC_CHECK
+    CheckWheelTailTranslationScaleJacobians(
+        Rwb1,
+        VP1->estimate().twb,
+        Rwb2,
+        VP2->estimate().twb,
+        s,
+        Tbo_d,
+        mpInt->encoder_velocity.cast<double>(),
+        _jacobianOplus[0].block<3,3>(9,0),
+        _jacobianOplus[4].block<3,3>(9,0),
+        _jacobianOplus[0].block<3,3>(9,3),
+        _jacobianOplus[4].block<3,3>(9,3),
+        _jacobianOplus[7].block<3,1>(9,0));
+#endif
 }
 
 EdgePriorPoseImu::EdgePriorPoseImu(ConstraintPoseImu *c)

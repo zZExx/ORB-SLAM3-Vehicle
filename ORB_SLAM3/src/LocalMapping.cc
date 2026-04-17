@@ -1273,6 +1273,7 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
 
     std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
     const bool useWheelEncoder = mpTracker->UseWheelEncoder();
+    const bool useWheelEncoderVIBA = useWheelEncoder && mpTracker->UseWheelEncoderVIBA();
     const double scaleBefore = mScale;
     const Eigen::Vector3d bgBefore = mbg;
     const Eigen::Vector3d baBefore = mba;
@@ -1286,7 +1287,7 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
               << " init_time=" << mInitTime
               << " kfs=" << N
               << std::endl;
-    Optimizer::InertialOptimization(mpAtlas->GetCurrentMap(), mRwg, mScale, mbg, mba, mbMonocular, infoInertial, false, false, priorG, priorA, useWheelEncoder);
+    Optimizer::InertialOptimization(mpAtlas->GetCurrentMap(), mRwg, mScale, mbg, mba, mbMonocular, infoInertial, false, false, priorG, priorA, useWheelEncoderVIBA);
 
     std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
     const std::chrono::duration<double> vibaElapsed = t1 - t0;

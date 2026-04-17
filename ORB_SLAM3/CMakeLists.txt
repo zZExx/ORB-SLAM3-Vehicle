@@ -31,6 +31,15 @@ else()
    message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
 endif()
 
+# Optional finite-difference self-check for the wheel-odometry tail Jacobian
+# inside EdgeInertialGSE::linearizeOplus. Enable only in Debug builds:
+#   cmake -DORB_SLAM3_WHEEL_TAIL_JAC_CHECK=ON ..
+option(ORB_SLAM3_WHEEL_TAIL_JAC_CHECK "Enable numeric check of wheel tail Jacobians" OFF)
+if(ORB_SLAM3_WHEEL_TAIL_JAC_CHECK)
+    message(STATUS "ORB_SLAM3_WHEEL_TAIL_JAC_CHECK enabled")
+    add_compile_definitions(ORB_SLAM3_WHEEL_TAIL_JAC_CHECK)
+endif()
+
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 
 find_package(OpenCV 4.4)

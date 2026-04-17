@@ -1,5 +1,23 @@
 # 轮速里程计融合说明（单目 + IMU）
 
+> **维护说明（2026-04-17）**：本文件不再作为当前状态主文档维护。
+>
+> 当前唯一应优先阅读的 wheel 文档是：
+> - `docs/WHEEL_THREE_AB_REPORT.md`
+>
+> 本文件仅保留为历史说明和背景材料。若与 `WHEEL_THREE_AB_REPORT.md` 冲突，以后者为准。
+
+> **当前状态（2026-04-17 更新）：wheel 融合相对 pure IMU 已出现平均正向收益，但稳定性仍不足。**
+>
+> | 指标（5-run, full vs pure） | wheel_on(full) | wheel_off(pure) | 结论 |
+> |------|----------|-----------|------|
+> | ratio mean/std | 0.8770 / 0.0968 | 0.8441 / 0.0925 | 平均 +3.9% |
+> | loop_gap mean/std (m) | 0.6961 / 0.5492 | 0.9136 / 0.3039 | 平均 -23.8% |
+> | run-level 胜率（5 组） | 3/5 | 2/5 | 有改善趋势，非稳定压倒性 |
+>
+> 当前判定：工程有效性为正，但“严格上线门限”仍需补 run 级异常归因（reset/init_fail/bad_loop）。
+> 详情见 [WHEEL_THREE_AB_REPORT.md](WHEEL_THREE_AB_REPORT.md) 的 P0 结果章节。
+
 参考实现：https://github.com/hongyeah314/ORB_SLAM3_with_wheel
 
 ## ROS2 参数
@@ -62,6 +80,8 @@ e_tail = Rbw1 * s * (twb2 - twb1) - Tbo + Rbw1*Rwb2*Tbo - encoder_velocity
 
 **风险：** 优化器把两边当成可减的同一物理量，但二者**物理含义**可能不同（尤其转弯、单目尺度时），这比单纯调 `NoiseVel` 更容易表现为「加 wheel 反而伤跟踪」。
 
+**已实测（2025-04-15）：** 同一 bag，wheel_on 尺度 ratio=0.707（wheel_off=0.877），wheel 约束在把单目尺度持续拉小约 29%，与此风险描述完全吻合。
+
 **建议修法方向：** 先选定一种**基准定义**（推荐：**让预积分里保存/传播的量与上述几何残差严格一致**，即「积什么」与 `Rbw1*s*dpb + 杠杆臂` 对齐），再同步改 `covariance_enc`、信息矩阵与雅可比。
 
 ### 2）何时建 wheel 边——`encoder_velocity.norm()` 门限
@@ -82,7 +102,9 @@ e_tail = Rbw1 * s * (twb2 - twb1) - Tbo + Rbw1*Rwb2*Tbo - encoder_velocity
 
 `LoopClosing` 修正关键帧位姿后，**通常不会**按新位姿重算 `KeyFrame::mpImuPreintegrated` 里的 `encoder_velocity`。wheel 约束可能与更新后的图不一致。
 
-**缓解：** 回环后对受影响预积分**重积分**，或在回环后若干帧内**暂时不加** wheel 残差边。
+**已实测（2025-04-15）：** wheel_on 时回环候选触发次数为 0（wheel_off 为 18 次），说明 wheel 残差改变了图几何结构，使 BoW+Sim3 验证提前失败，真实回环被压制。当前风险尚未到达"回环后冻结预积分"阶段，但回环压制本身已是更严重的问题。
+
+**缓解：** 回环后对受影响预积分**重积分**，或在回环后若干帧内**暂时不加** wheel 残差边。此项需在 P0 修复并回环恢复后再做。
 
 ### 5）信息矩阵回退策略
 
@@ -133,6 +155,28 @@ e_tail = Rbw1 * s * (twb2 - twb1) - Tbo + Rbw1*Rwb2*Tbo - encoder_velocity
 - **`EdgeInertialGSE::computeError` 内 `std::cout`**：若仍存在，会严重拖慢优化；应删除或 `#ifdef`。
 - **轮速缺失段**：若 `encoder_v` 被置 0 重积分，与建图当时使用的预积分可能不一致；**bias 更新后 `Reintegrate`** 会重播 `enc`，需保证队列与 YAML 开关一致。
 - **CMake 生成物误提交**：与算法无关，但说明该历史 commit 审查疏漏，合并时注意 `.gitignore`。
+
+---
+
+## A/B 实验与量化验收
+
+使用 `scripts/eval_traj_vs_wheel.py` 对任意两组实验做标准化对比：
+
+```bash
+source /opt/ros/humble/setup.bash
+python3 scripts/eval_traj_vs_wheel.py \
+    --traj exp_wheel_on/FrameTrajectory.txt:wheel_on \
+           exp_wheel_off/FrameTrajectory.txt:wheel_off \
+    --bag  /path/to/large_single_0.db3 \
+    --topic /wheel_odom \
+    --segments 10 \
+    --save-plot experiments/ratio.png
+```
+
+三项验收指标：
+- **尺度 ratio**（SLAM 路程 / 轮速路程）：目标 ≥ 0.90，当前 wheel_on=0.707；
+- **Loop gap**（首尾帧距离）：目标 ≤ wheel_off 基线（当前 0.367 m）；
+- **回环候选触发次数**：目标 ≥ 1（已知 bag 含真实回环，当前 wheel_on=0）。
 
 ---
 

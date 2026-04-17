@@ -185,6 +185,7 @@ class Preintegrated
         ar & mvMeasurements;
         ar & mbUseWheel;
         ar & boost::serialization::make_array(encoder_velocity.data(), encoder_velocity.size());
+        ar & boost::serialization::make_array(Jencg.data(), Jencg.size());
         ar & boost::serialization::make_array(Rbo.data(), Rbo.size());
         ar & boost::serialization::make_array(Tbo.data(), Tbo.size());
         ar & boost::serialization::make_array(covariance_enc.data(), covariance_enc.size());
@@ -197,7 +198,8 @@ public:
     Preintegrated(const Bias &b_, const Calib &calib);
     Preintegrated(Preintegrated* pImuPre);
     Preintegrated(): mbUseWheel(false), Rbo(Eigen::Matrix3f::Identity()), Tbo(Eigen::Vector3f::Zero()),
-        encoder_velocity(Eigen::Vector3f::Zero()), covariance_enc(Eigen::Matrix<float,21,21>::Zero()) {}
+        encoder_velocity(Eigen::Vector3f::Zero()), Jencg(Eigen::Matrix3f::Zero()),
+        covariance_enc(Eigen::Matrix<float,21,21>::Zero()) {}
     ~Preintegrated() {}
     void CopyFrom(Preintegrated* pImuPre);
     void Initialize(const Bias &b_);
@@ -250,6 +252,7 @@ public:
     Eigen::Matrix3f Rbo;
     Eigen::Vector3f Tbo;
     Eigen::Vector3f encoder_velocity;
+    Eigen::Matrix3f Jencg;          // d(encoder_velocity) / d(delta_bg), analogous to JPg
     Eigen::Matrix<float,21,21> covariance_enc;
     Eigen::DiagonalMatrix<float,9> Nga_en;
     Eigen::DiagonalMatrix<float,9> NgaWalk_en;

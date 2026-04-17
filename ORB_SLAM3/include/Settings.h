@@ -95,6 +95,7 @@ namespace ORB_SLAM3 {
         bool insertKFsWhenLost() {return insertKFsWhenLost_;}
 
         bool wheelUse() const { return bWheelUse_; }
+        bool wheelUseVIBAEdge() const { return bWheelUseVIBAEdge_; }
         Eigen::Vector3f wheelTImuWheel() const { return wheelTImuWheel_; }
         Eigen::Matrix3f wheelRImuWheel() const { return wheelRImuWheel_; }
         float wheelNoiseVel() const { return wheelNoiseVel_; }
@@ -202,6 +203,7 @@ namespace ORB_SLAM3 {
         bool insertKFsWhenLost_;
 
         bool bWheelUse_{false};
+        bool bWheelUseVIBAEdge_{false};
         Eigen::Vector3f wheelTImuWheel_{Eigen::Vector3f::Zero()};
         Eigen::Matrix3f wheelRImuWheel_{Eigen::Matrix3f::Identity()};
         float wheelNoiseVel_{0.05f};

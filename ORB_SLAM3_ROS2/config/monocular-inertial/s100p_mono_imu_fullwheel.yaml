@@ -29,7 +29,7 @@ Camera.RGB: 0
 # Transformation from camera to body-frame (imu)
 Tbc: !!opencv-matrix
    rows: 4
-   cols: 4 
+   cols: 4
    dt: f
    data: [0.00805913, 0.05066120, 0.99868338, 0.08414861,         -0.99977233, -0.01932417, 0.00904819, -0.00343530,         0.01975712, -0.99852893, 0.05049393, -0.04614790,         0.00000000, 0.00000000, 0.00000000, 1.00000000]
 # IMU noise
@@ -56,7 +56,7 @@ Wheel.R_imu_wheel: !!opencv-matrix
   data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
 Wheel.NoiseVel: 0.02
 Wheel.WalkVel: 0.0001
-Wheel.UseVIBAEdge: 0
+Wheel.UseVIBAEdge: 1
 
 # Init-stage gating parameters (consumed by Tracking)
 Init.MinKeyFrames: 5

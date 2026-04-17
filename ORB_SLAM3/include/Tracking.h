@@ -112,6 +112,7 @@ public:
     float GetImuInitMaxTime() const { return mImuInitMaxTime; }
     float GetImuInitMinMotion() const { return mImuInitMinMotion; }
     bool UseWheelEncoder() const { return mpImuCalib != nullptr && mpImuCalib->mbUseWheel; }
+    bool UseWheelEncoderVIBA() const { return mbUseWheelEncoderVIBA; }
 
 #ifdef REGISTER_LOOP
     void RequestStop();
@@ -394,6 +395,8 @@ protected:
 
     /** When false, do not call IMU::Calib::SetWheel from YAML/Settings (wheel fusion off in core). */
     bool mbApplyWheelFromYaml;
+    /** When true, VIBA is allowed to create EdgeInertialGSE in initialization graph optimization. */
+    bool mbUseWheelEncoderVIBA;
 
     Sophus::SE3f mTlr;
 

@@ -54,7 +54,7 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     mKeyFrameTimeThresholdNoImuInit(0.25), mKeyFrameTimeThresholdImuInit(0.5), mImuInitMaxTime(10.0f), mImuInitMinMotion(0.02f),
     mMonoInitTimeoutSec(3.0f), mMonoInitMinRotDeg(3.0f), mMonoInitMaxRotDeg(15.0f), mMonoInitMinDtSec(0.25f),
     mnTrackLocalMapMinInliersNoImu(20), mnTrackLocalMapMinInliersReloc(30), mnMonoInitMinTrackedMapPoints(30),
-    mnResetMinKeyFrames(10), mbApplyWheelFromYaml(bApplyWheelFromYaml)
+    mnResetMinKeyFrames(10), mbApplyWheelFromYaml(bApplyWheelFromYaml), mbUseWheelEncoderVIBA(false)
 {
     // Load camera parameters from settings file
     if(settings){
@@ -720,6 +720,7 @@ void Tracking::newParameterLoader(Settings *settings) {
     float Naw = settings->accWalk();
 
     const float sf = sqrt(mImuFreq);
+    mbUseWheelEncoderVIBA = settings->wheelUseVIBAEdge();
     mpImuCalib = new IMU::Calib(Tbc,Ng*sf,Na*sf,Ngw/sf,Naw/sf);
     if(mbApplyWheelFromYaml)
     {
@@ -1532,6 +1533,8 @@ bool Tracking::ParseIMUParamFile(cv::FileStorage &fSettings)
     cout << "IMU accelerometer walk: " << Naw << " m/s^3/sqrt(Hz)" << endl;
 
     mpImuCalib = new IMU::Calib(Tbc,Ng*sf,Na*sf,Ngw/sf,Naw/sf);
+    cv::FileNode vibaNode = fSettings["Wheel.UseVIBAEdge"];
+    mbUseWheelEncoderVIBA = (!vibaNode.empty()) && (static_cast<int>(vibaNode) != 0);
 
     if(mbApplyWheelFromYaml)
     {

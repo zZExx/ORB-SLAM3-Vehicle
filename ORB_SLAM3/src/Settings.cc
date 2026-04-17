@@ -431,10 +431,17 @@ namespace ORB_SLAM3 {
         }
 
         bWheelUse_ = false;
+        bWheelUseVIBAEdge_ = false;
         wheelTImuWheel_.setZero();
         wheelRImuWheel_.setIdentity();
         wheelNoiseVel_ = 0.05f;
         wheelWalkVel_ = 1e-4f;
+        bool vibaFound = false;
+        const int useVIBAEdge = readParameter<int>(fSettings,"Wheel.UseVIBAEdge",vibaFound,false);
+        if(vibaFound && useVIBAEdge != 0)
+        {
+            bWheelUseVIBAEdge_ = true;
+        }
         bool wfound = false;
         const int wuse = readParameter<int>(fSettings,"Wheel.use",wfound,false);
         if(wfound && wuse != 0)

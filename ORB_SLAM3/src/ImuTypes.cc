@@ -122,7 +122,7 @@ Preintegrated::Preintegrated(Preintegrated* pImuPre): dT(pImuPre->dT),C(pImuPre-
      dP(pImuPre->dP), JRg(pImuPre->JRg), JVg(pImuPre->JVg), JVa(pImuPre->JVa), JPg(pImuPre->JPg), JPa(pImuPre->JPa),
      avgA(pImuPre->avgA), avgW(pImuPre->avgW), bu(pImuPre->bu), db(pImuPre->db), mvMeasurements(pImuPre->mvMeasurements),
      mbUseWheel(pImuPre->mbUseWheel), Rbo(pImuPre->Rbo), Tbo(pImuPre->Tbo), encoder_velocity(pImuPre->encoder_velocity),
-     covariance_enc(pImuPre->covariance_enc), Nga_en(pImuPre->Nga_en), NgaWalk_en(pImuPre->NgaWalk_en)
+     Jencg(pImuPre->Jencg), covariance_enc(pImuPre->covariance_enc), Nga_en(pImuPre->Nga_en), NgaWalk_en(pImuPre->NgaWalk_en)
 {
 
 }
@@ -152,6 +152,7 @@ void Preintegrated::CopyFrom(Preintegrated* pImuPre)
     Rbo = pImuPre->Rbo;
     Tbo = pImuPre->Tbo;
     encoder_velocity = pImuPre->encoder_velocity;
+    Jencg = pImuPre->Jencg;
     covariance_enc = pImuPre->covariance_enc;
     Nga_en = pImuPre->Nga_en;
     NgaWalk_en = pImuPre->NgaWalk_en;
@@ -178,6 +179,7 @@ void Preintegrated::Initialize(const Bias &b_)
     dT=0.0f;
     mvMeasurements.clear();
     encoder_velocity.setZero();
+    Jencg.setZero();
     covariance_enc.setZero();
 }
 
@@ -255,6 +257,25 @@ void Preintegrated::IntegrateNewMeasurement(const Eigen::Vector3f &acceleration,
     dT += dt;
 }
 
+// --------------------------------------------------------------------------
+// P0 Scheme A contract for the wheel-aware preintegration step
+// --------------------------------------------------------------------------
+// State vector (12x1) propagated in covariance_enc.block<12,12>(0,0):
+//     [ delta_phi(3) ; delta_v(3) ; delta_p(3) ; delta_enc_v(3) ]
+// where delta_* use right-perturbation on the underlying preintegrated
+// quantity (dR, dV, dP, encoder_velocity), all expressed in the base body
+// frame {b1} at the beginning of this preintegration window.
+//
+// encoder_velocity accumulates the wheel-origin displacement observed by
+// the odometer, transformed into {b1}:
+//     encoder_velocity ~= sum_k dR_k * Rbo * [v_k,0,0] * dt_k
+//                      ~= R_b1_w * (t_wo2 - t_wo1)
+// Scale s (monocular) is never applied here -- the tail residual applies s
+// only to the visual-metric displacement dpb = twb2 - twb1, never to the
+// lever-arm term R_wb2*Tbo - Tbo (Tbo is a calibrated quantity).
+// Known limitation: Nga_en injects identical variance on (vx,vy,vz) even
+// though only vx is actually measured. Left unchanged in this round.
+// --------------------------------------------------------------------------
 void Preintegrated::IntegrateNewMeasurement(const Eigen::Vector3f &acceleration, const Eigen::Vector3f &angVel, const float &dt, const double &encoder_v)
 {
     if(!mbUseWheel)
@@ -294,6 +315,9 @@ void Preintegrated::IntegrateNewMeasurement(const Eigen::Vector3f &acceleration,
     JPg = JPg + JVg*dt -0.5f*dR*dt*dt*Wacc*JRg;
     JVa = JVa - dR*dt;
     JVg = JVg - dR*dt*Wacc*JRg;
+    // d(encoder_velocity)/d(bg): right-perturbation, analogous to JPg
+    // enc_vel += dR_k * Rbo * enc_cast * dt  =>  d/d(bg) = -dR_k * SO3hat(Rbo*enc_cast) * JRg_k * dt
+    Jencg -= dR * Sophus::SO3f::hat(Rbo * encoder_cast) * JRg * dt;
 
     const Eigen::Matrix3f dR_past = dR;
     IntegratedRotation dRi(angVel,b,dt);
@@ -309,22 +333,27 @@ void Preintegrated::IntegrateNewMeasurement(const Eigen::Vector3f &acceleration,
 
     dT += dt;
 
+    // Covariance propagation on 12D state [delta_phi, delta_v, delta_p, delta_enc_v]
+    // with 9D noise input [eta_gyro(3), eta_acc(3), eta_vel(3)].
+    //
+    // F (12x12):
+    //   F[0:9, 0:9]   = A       (standard IMU 9x9 transition)
+    //   F[9:12, 0:3]  = -dR_k * hat(Rbo*enc_cast) * dt   (right-pert on dR_k)
+    //   F[9:12, 9:12] = I
+    //   Other blocks are zero (enc_v does not feed back into IMU state).
+    //
+    // Vmat (12x9):
+    //   Vmat[0:9, 0:6] = B      (IMU noise injection)
+    //   Vmat[9:12, 6:9] = dR_k * Rbo * dt                (wheel vel noise)
+    //   Known limitation: this injects nv^2 on all three wheel-velocity
+    //   axes, but only the x component is actually measured.
     Eigen::Matrix<float,12,12> F;
     F.setZero();
     Eigen::Matrix<float,12,9> Vmat;
     Vmat.setZero();
 
-    // 累积量 -> 当前量
-    const Eigen::Vector3f encoder_fi = Rbo * encoder_velocity;
-    // const Eigen::Vector3f encoder_fi = Rbo * encoder_cast;
-
-    Eigen::Matrix3f R_encoder;
-    R_encoder << 0.f, -encoder_fi(2), encoder_fi(1),
-                 encoder_fi(2), 0.f, -encoder_fi(0),
-                -encoder_fi(1), encoder_fi(0), 0.f;
-
     F.block<9,9>(0,0) = A;
-    F.block<3,3>(9,3) = -dR_past*dt*R_encoder;
+    F.block<3,3>(9,0) = -dR_past * Sophus::SO3f::hat(Rbo * encoder_cast) * dt;
     F.block<3,3>(9,9) = Eigen::Matrix3f::Identity();
 
     Vmat.block<9,6>(0,0) = B;
